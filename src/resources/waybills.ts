@@ -10,6 +10,8 @@ import type {
   AddPackageResponse,
   SplitPackageRequest,
   SplitPackageResponse,
+  UpdatePackageRequest,
+  UpdatePackageResponse,
   AllocateWaybillNumberResponse,
   AdditionalService,
   CreateAdditionalServicesRequest,
@@ -377,6 +379,36 @@ export class Waybills {
   ): Promise<SplitPackageResponse> {
     return this.http.post<SplitPackageResponse>(
       `/waybills/${encodeURIComponent(waybillNo)}/packages/${encodeURIComponent(packageNo)}/split`,
+      data as unknown as Record<string, unknown>
+    );
+  }
+
+  /**
+   * Update a package, e.g. at warehouse inbound: measured weight and
+   * dimensions, description, photos, cargo handling. Only the fields sent
+   * change; works in any waybill status. A weight/dimension change recomputes
+   * the waybill totals and re-prices its charges.
+   *
+   * @param waybillNo - Waybill number or external waybill number
+   * @param packageNo - The package number or its external number (outParcelNo)
+   * @param data - weight (kg), length/width/height (cm), itemDesc, photos
+   *   (appended to the list), load_properties; at least one
+   *
+   * @example
+   * ```typescript
+   * await client.waybills.updatePackage('TH24020001', 'TH24020001A1', {
+   *   weight: 3.2, length: 30, width: 25, height: 12,
+   *   photos: ['https://example.com/inbound/1.jpg'],
+   * });
+   * ```
+   */
+  async updatePackage(
+    waybillNo: string,
+    packageNo: string,
+    data: UpdatePackageRequest,
+  ): Promise<UpdatePackageResponse> {
+    return this.http.patch<UpdatePackageResponse>(
+      `/waybills/${encodeURIComponent(waybillNo)}/packages/${encodeURIComponent(packageNo)}`,
       data as unknown as Record<string, unknown>
     );
   }

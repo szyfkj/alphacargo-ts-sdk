@@ -81,18 +81,20 @@ console.log('Waybill created:', waybill.waybill_no);
 | `timeout` | number | No | Request timeout in ms (default: 30000) |
 | `language` | string | No | Preferred language for error messages (`en`, `th`, `zh`). Sent as `Accept-Language`. Defaults to English. |
 | `headers` | object | No | Custom headers to include in all requests |
-| `signatureScheme` | string | No | `'hmac-sha256'` (default) or `'sha256'`. See **Request signing** |
 | `debug` | boolean | No | Log each request's method, path and status. Never logs query strings, bodies or responses |
 
 ### Request signing
 
 Every request carries `api_key`, `nonceStr` and `sign`, where
-`sign = HMAC-SHA256(apiSecret, canonicalJson(request without sign))`.
+`sign = HMAC-SHA256(apiSecret, canonicalJson(request without sign))`. The secret
+itself is never sent.
 
-Before 2.7 the SDK sent a plain SHA-256 of the request instead — **the secret was
-not part of it**, so it proved only knowledge of the `apiKey`. That scheme is
-still available as `signatureScheme: 'sha256'` for a TMS that predates keyed
-signatures, and is rejected by one running with `API_SIGNATURE_REQUIRE_SECRET`.
+> **Upgrading to 3.0.** Earlier versions could sign with a plain SHA-256 that did
+> not involve the secret (`signatureScheme: 'sha256'`, the default before 2.7).
+> The TMS no longer accepts it, so 3.0 removes it: `generateSignature(params,
+> apiSecret)` is now the keyed signature, `verifyWebhookSignature` requires
+> `apiSecret`, and its result no longer carries `scheme`. The `signatureScheme`
+> and `requireSecret` options are still accepted, and ignored.
 
 ### Verifying webhooks
 
@@ -101,14 +103,12 @@ import { verifyWebhookSignature } from '@alphacargo/tms-sdk';
 
 const result = await verifyWebhookSignature(req.body, {
   apiSecret: process.env.TMS_API_SECRET, // secret of the api_key in the body
-  requireSecret: true,                   // reject the old unkeyed signature
 });
 if (!result.valid) return res.status(401).json({ error: result.error });
-// result.scheme is 'keyed' or 'unkeyed'
 ```
 
-Without `apiSecret` only the unkeyed signature can be checked, which anyone who
-knows the `api_key` can forge.
+A webhook from an organization with no API key/secret arrives **unsigned** (no
+`sign` field) and never verifies — treat it as unauthenticated.
 
 ### Localized error messages
 
@@ -494,23 +494,23 @@ writeFileSync('report.csv', Buffer.from(csv));
 ### Quotes
 
 ```typescript
+// Addresses must carry coordinates — quoting never geocodes for you. Resolve
+// free text first and judge the match yourself.
+const from = await client.address.resolve({ address: '123 Sukhumvit Rd, Bangkok' });
+const to = await client.address.resolve({ address: '456 Nimman Rd, Chiang Mai' });
+if (from.confidence < 0.7 || to.confidence < 0.7) {
+  throw new Error('Address too vague to price — ask the customer to confirm.');
+}
+
 // Create an FTL/LTL shipping quotation. To bind it to a sender account of your
 // organization, pass `{ senderAccountId }` as the second argument.
 const quote = await client.quotes.create({
   request_id: 'req-123',
-  draft_order_id: 'draft-456',
-  draft_order_version: 1,
-  pickup: { address: '123 Sukhumvit Rd, Bangkok' },
-  delivery: { address: '456 Nimman Rd, Chiang Mai' },
+  pickup: { address: from.formatted_address ?? '', lat: from.lat, lng: from.lng },
+  delivery: { address: to.formatted_address ?? '', lat: to.lat, lng: to.lng },
   items: [
     { qty: 2, length_cm: 100, width_cm: 80, height_cm: 60, weight_kg: 25 }
-  ],
-  aggregates: {
-    total_weight_kg: 50,
-    total_volume_m3: 0.96,
-    longest_edge_cm: 100,
-    total_package_count: 2
-  }
+  ]
 });
 
 console.log(quote.quotation_id, quote.vehicle);
@@ -518,9 +518,19 @@ console.log(`${quote.estimated_total} ${quote.currency}, valid until ${quote.exp
 console.log(quote.breakdown); // [{ kind: 'base', amount }, { kind: 'addon', key, amount }]
 ```
 
-> `draft_order_id` is your own reference (e.g. your cart/order ID), echoed back
-> and stored on the quotation — there is no draft-order entity in the TMS, so you
-> don't need to create one first.
+> `request_id` is your own correlation ID (e.g. your cart/order ID), echoed back
+> and stored on the quotation — there is no entity to create in the TMS first.
+> Quoting is read-only, so repeating a request is harmless.
+
+> Shipment totals are always derived from `items`, and how full a vehicle may be
+> loaded is decided server-side: a shipment may use the full rated weight and
+> volume, and whether it really fits is settled by a 3D pack that leaves
+> clearance around every item. Neither is a request parameter.
+
+> `client.address.resolve()` always returns a result, falling back as far as a
+> province centroid (`confidence` 0.32, `source` `province_centroid`). Check
+> `confidence` before pricing — that judgement is deliberately yours, since only
+> you know how much a wrong pickup point costs.
 
 > Quote creation (`POST /api/quotes`) uses your API key (signature auth). The
 > customer-facing quote operations (view, pay, cancel, order tracking) are

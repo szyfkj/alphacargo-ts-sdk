@@ -4,12 +4,13 @@ import type { CreateQuoteRequest, CreateQuoteResponse } from '../types';
 /**
  * Quotes resource for the FTL/LTL shipping-quote flow.
  *
- * Only quote creation is exposed here: `POST /api/quotes` uses signature
- * authentication (the API key), which is what this SDK is built around. The
- * downstream quote operations — `GET /api/quotes/{id}`, `POST /api/quotes/{id}/pay`,
- * `POST /api/quotes/{id}/cancel`, and `GET /api/orders/{id}/tracking` — are
- * authenticated with the customer's sender-account session cookie, not an API
- * key, so they are not part of this server-to-server SDK.
+ * Only quote creation is exposed here so far. The downstream quote operations —
+ * `GET /api/quotes`, `GET /api/quotes/{id}`, `POST /api/quotes/{id}/pay`,
+ * `POST /api/quotes/{id}/cancel`, `GET /api/quotes/{id}/payment-methods` and
+ * `GET /api/orders/{id}/tracking` — take the same organization API-key
+ * signature as everything else in this SDK, plus an `X-Sender-Account-Id`
+ * header naming the sender you act for. They are callable server-to-server;
+ * they simply have no wrapper here yet. Call them directly meanwhile.
  */
 export class Quotes {
   constructor(private readonly http: HttpClient) {}
@@ -24,29 +25,32 @@ export class Quotes {
    * for, pass `senderAccountId` (sent as the `X-Sender-Account-Id` header); it
    * must belong to your organization.
    *
-   * @param data - Quote request (cargo, addresses, aggregates)
+   * Addresses must carry coordinates — quoting never geocodes on your behalf.
+   * Resolve free text with {@link Address.resolve} first and use the
+   * `confidence` it reports to decide whether the match is good enough to price
+   * against; the resolver always returns something, down to a province centroid.
+   *
+   * @param data - Quote request (addresses, cargo, options)
    * @param options - `senderAccountId`: the sender account that owns the quote
    * @returns The created quotation
    *
    * @example
    * ```typescript
+   * const from = await client.address.resolve({ address: '123 Sukhumvit Rd, Bangkok' });
+   * const to = await client.address.resolve({ address: '456 Nimman Rd, Chiang Mai' });
+   * if (from.confidence < 0.7 || to.confidence < 0.7) {
+   *   throw new Error('Address too vague to price — ask the customer to confirm.');
+   * }
+   *
    * const quote = await client.quotes.create({
    *   request_id: 'req-123',
-   *   draft_order_id: 'draft-456',
-   *   draft_order_version: 1,
-   *   pickup: { address: '123 Sukhumvit Rd, Bangkok' },
-   *   delivery: { address: '456 Nimman Rd, Chiang Mai' },
+   *   pickup: { address: from.formatted_address ?? '…', lat: from.lat, lng: from.lng },
+   *   delivery: { address: to.formatted_address ?? '…', lat: to.lat, lng: to.lng },
    *   items: [
    *     { qty: 2, length_cm: 100, width_cm: 80, height_cm: 60, weight_kg: 25 },
    *   ],
-   *   aggregates: {
-   *     total_weight_kg: 50,
-   *     total_volume_m3: 0.96,
-   *     longest_edge_cm: 100,
-   *     total_package_count: 2,
-   *   },
    * });
-   * console.log(quote.quotation_id, quote.provider, quote.vehicle);
+   * console.log(quote.quotation_id, quote.vehicle, quote.estimated_total);
    * ```
    */
   async create(

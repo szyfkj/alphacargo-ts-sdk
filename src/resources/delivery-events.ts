@@ -2,6 +2,7 @@ import { HttpClient } from '../utils';
 import type {
   DeliveryEvent,
   CreateDeliveryEventRequest,
+  PodUploadToken,
 } from '../types';
 
 /**
@@ -74,6 +75,35 @@ export class DeliveryEvents {
     }
 
     return response.json() as Promise<Record<string, unknown>>;
+  }
+
+  /**
+   * Get a temporary Aliyun STS credential to upload POD photos for an event
+   * straight to OSS. It can only write objects under `prefix`, for 15 minutes.
+   * Upload with it, then call {@link attachPods} with the keys. `mode: "server"`
+   * means OSS isn't configured: use {@link uploadPods} instead.
+   *
+   * @param eventId - Delivery event ID
+   */
+  async getPodUploadToken(eventId: string): Promise<PodUploadToken> {
+    return this.http.post<PodUploadToken>(
+      `/delivery-events/${encodeURIComponent(eventId)}/pods/upload-token`,
+      {}
+    );
+  }
+
+  /**
+   * Attach POD photos already uploaded to OSS with a token from
+   * {@link getPodUploadToken}.
+   *
+   * @param eventId - Delivery event ID
+   * @param keys - 1 to 10 object keys, each under the token's prefix
+   */
+  async attachPods(eventId: string, keys: string[]): Promise<Record<string, unknown>> {
+    return this.http.post<Record<string, unknown>>(
+      `/delivery-events/${encodeURIComponent(eventId)}/pods`,
+      { keys }
+    );
   }
 
   /**

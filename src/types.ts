@@ -37,6 +37,12 @@ export interface Product {
   width?: number;
   length?: number;
   height?: number;
+  /**
+   * Free-form custom data, e.g. production details for customs clearance. Any
+   * JSON object up to 8 KB. On a re-push, leaving it out keeps the stored value
+   * and `null` clears it.
+   */
+  metadata?: Record<string, unknown> | null;
 }
 
 /**
@@ -119,7 +125,10 @@ export interface CreateWaybillRequest {
   /** UUID of a managed product category (Settings → Product Categories). Coexists with product_category */
   product_category_id?: string;
   service_id?: string;
-  /** When provided, sender/receiver can be omitted - derived from route's first/last leg units */
+  /**
+   * One of your organization's routes (another org's is refused with 400). When
+   * provided, sender/receiver can be omitted - derived from route's first/last leg units
+   */
   route_id?: string;
   additional_service_ids?: string[];
   sender_account?: { code?: string; id?: string };
@@ -174,6 +183,7 @@ export interface UpdateWaybillRequest {
 }
 
 export interface TrackingRoute {
+  /** The cross-border milestone (e.g. `customs_finished`) when the event has one, otherwise the status. */
   state: string;
   stateText: string;
   message: string;
@@ -238,6 +248,8 @@ export interface WaybillSummary {
   /** Service resolved from the requesting org's delegation. */
   service_id?: string | null;
   service_name?: string | null;
+  /** Route resolved from the requesting org's delegation. */
+  route_id?: string | null;
   weight: number;
   volume: number;
   volumetric_weight: number;
@@ -309,6 +321,8 @@ export interface WaybillPackageSummary {
 export interface WaybillDelegation {
   organization_id: string;
   service_area_id?: string;
+  /** This organization's route for the waybill. */
+  route_id?: string | null;
   status?: string;
   created_at?: string;
   updated_at?: string;
@@ -339,7 +353,9 @@ export interface WaybillDetails {
   volumetric_weight?: number;
   estimated_weight?: number | null;
   estimated_volume?: number | null;
-  route_id?: string;
+  /** Your organization's route for the waybill (from its delegation); null when it has none. */
+  route_id?: string | null;
+  route?: { id: string; code: string; name: string } | null;
   latest_station?: string;
   picked_up_time?: string;
   delivered_time?: string;
@@ -412,6 +428,37 @@ export interface SplitPackageResponse {
   waybillNo: string;
   canceledPackageNo: string;
   packages: { packageNo: string; id: string }[];
+}
+
+/** Fields of one package to change. Send at least one. */
+export interface UpdatePackageRequest {
+  /** Weight in kg. */
+  weight?: number;
+  /** Length in cm. */
+  length?: number;
+  /** Width in cm. */
+  width?: number;
+  /** Height in cm. */
+  height?: number;
+  /** Item description. */
+  itemDesc?: string;
+  /** Photo URLs to add. Appended to the package's photos; URLs it already has are skipped. */
+  photos?: string[];
+  /** Cargo handling for load planning. Replaces the package's. */
+  load_properties?: LoadProperties;
+}
+
+export interface UpdatePackageResponse {
+  waybillNo: string;
+  packageNo: string;
+  outParcelNo: string | null;
+  weight: number | null;
+  length: number | null;
+  width: number | null;
+  height: number | null;
+  itemDesc: string | null;
+  photos: string[];
+  load_properties: LoadProperties;
 }
 
 // --- Package Label OCR ---
@@ -1489,11 +1536,29 @@ export type DeliveryEventType =
   | 'in_transit_hub_inbound'
   | 'in_transit_hub_outbound';
 
+/**
+ * A cross-border milestone, recorded as one event type: transport_collecting →
+ * picked_up, transport_originalport → in_transit_sorted, customs_finished and
+ * transport_departed → in_transit_hub_outbound, transport_arrived →
+ * in_transit_hub_inbound, transport_finished → in_transit_sorted,
+ * transport_handover → delivered.
+ */
+export type SecondaryEventType =
+  | 'transport_collecting'
+  | 'transport_originalport'
+  | 'customs_finished'
+  | 'transport_departed'
+  | 'transport_arrived'
+  | 'transport_finished'
+  | 'transport_handover';
+
 export interface DeliveryEvent {
   id: string;
   waybill_id?: string;
   package_id?: string;
   event_type: DeliveryEventType;
+  /** The cross-border milestone; null for other events. */
+  secondary_event_type?: SecondaryEventType | null;
   event_time: string;
   coordinates?: Record<string, unknown>;
   notes?: string;
@@ -1504,12 +1569,31 @@ export interface DeliveryEvent {
 export interface CreateDeliveryEventRequest {
   waybill_id?: string;
   package_id?: string;
-  event_type: DeliveryEventType;
+  /** Required unless secondary_event_type is given; with it, the milestone's event type. */
+  event_type?: DeliveryEventType;
+  secondary_event_type?: SecondaryEventType;
   event_time?: string;
   coordinates?: Record<string, unknown>;
   notes?: string;
   photos?: string[];
 }
+
+/** From `POST /delivery-events/{eventId}/pods/upload-token`. */
+export type PodUploadToken =
+  | { mode: 'server' }
+  | {
+      mode: 'oss';
+      region: string;
+      bucket: string;
+      /** The OSS host to upload to; pass it as ali-oss's `endpoint`. */
+      endpoint: string;
+      /** Every object key you upload must start with this. */
+      prefix: string;
+      accessKeyId: string;
+      accessKeySecret: string;
+      securityToken: string;
+      expiration: string;
+    };
 
 // ============================================================================
 // Report Types
@@ -1637,7 +1721,6 @@ export interface ListRegionsParams {
 export type GeocodeSource =
   | 'google_geocoding'
   | 'google_places'
-  | 'longdo'
   | 'postal_centroid'
   | 'province_centroid';
 
@@ -1835,6 +1918,11 @@ export interface CreateProductCategoryRequest {
   sort_order?: number;
   /** Default cargo handling for load planning */
   load_defaults?: LoadProperties;
+  /**
+   * Services this category's cargo may travel on. Omit to allow every service;
+   * a subcategory with none of its own inherits the nearest ancestor's list.
+   */
+  allowed_service_ids?: string[];
 }
 
 export interface UpdateProductCategoryRequest {
@@ -1846,6 +1934,11 @@ export interface UpdateProductCategoryRequest {
   sort_order?: number;
   /** Replaces the category's handling defaults */
   load_defaults?: LoadProperties;
+  /**
+   * Replaces the services this category's cargo may travel on. Omit to leave
+   * the list untouched; `[]` clears it back to inheriting from its ancestors.
+   */
+  allowed_service_ids?: string[];
 }
 
 export interface ListProductCategoriesParams {
@@ -1866,8 +1959,13 @@ export interface ListProductCategoriesParams {
 export interface QuoteAddress {
   /** Free-text address line. */
   address: string;
-  lat?: number | null;
-  lng?: number | null;
+  /**
+   * Latitude (-90..90). REQUIRED: quoting never geocodes. Resolve free text
+   * with `client.address.resolve({ address })` first and check its `confidence`.
+   */
+  lat: number;
+  /** Longitude (-180..180). Required, see `lat`. */
+  lng: number;
   country?: string | null;
   province?: string | null;
   district?: string | null;
@@ -1892,44 +1990,25 @@ export interface QuoteItem {
   image_urls?: string[];
 }
 
-/** Shipment totals for a quote request. */
-export interface QuoteAggregates {
-  total_weight_kg: number;
-  total_volume_m3: number;
-  longest_edge_cm: number;
-  total_package_count: number;
-}
-
 export type QuoteServiceType = 'ftl_transport' | 'ltl_transport';
 
 export interface CreateQuoteRequest {
   /** Caller-supplied correlation ID (echoed back). Generated when omitted. */
   request_id?: string;
-  /** Your own reference for the cargo being priced. Generated when omitted. */
-  draft_order_id?: string;
-  /** Draft order version (integer >= 0). Defaults to 1. */
-  draft_order_version?: number;
-  /** Geocoded server-side when `lat`/`lng` are omitted. */
+  /** Pickup address, coordinates included. */
   pickup: QuoteAddress;
-  /** Geocoded server-side when `lat`/`lng` are omitted. */
+  /** Delivery address, coordinates included. */
   delivery: QuoteAddress;
-  /** Cargo items (min 1). */
+  /**
+   * Cargo items (min 1). Shipment totals are always derived from these
+   * server-side, so there is nothing to send alongside them.
+   */
   items: QuoteItem[];
-  /** Shipment totals. Computed from `items` when omitted. */
-  aggregates?: QuoteAggregates;
   /** Defaults to "ftl_transport". */
   service_type?: QuoteServiceType;
   cargo_notes?: string | null;
   /** Add-on requests, each identified by `key`. */
   addons?: { key: string }[];
-  /** Min vehicle weight utilization, 0–1 (default 0). */
-  min_weight_fullness?: number;
-  /** Min vehicle volume utilization, 0–1 (default 0). */
-  min_volume_fullness?: number;
-  /** Max vehicle weight utilization, 0–1 (default 0.85). */
-  max_weight_fullness?: number;
-  /** Max vehicle volume utilization, 0–1 (default 0.85). */
-  max_volume_fullness?: number;
 }
 
 /** One line of a quotation's price breakdown (base fare plus any add-ons). */
@@ -1940,8 +2019,6 @@ export type QuoteBreakdownLine =
 export interface CreateQuoteResponse {
   quotation_id: string;
   request_id: string;
-  draft_order_id: string;
-  draft_order_version: number;
   /** Selected vehicle, or null when no vehicle dimension applies. */
   vehicle: { type: string; max_payload_kg: number } | null;
   /**
@@ -2045,13 +2122,10 @@ export interface TMSClientConfig {
    */
   apiSecret: string;
   /**
-   * How requests are signed.
-   * - `'hmac-sha256'` (default): HMAC-SHA256 keyed with `apiSecret`.
-   * - `'sha256'`: the old scheme — a bare SHA-256 of the canonical JSON, with no
-   *   secret in it. Only for a TMS that predates keyed signatures; a TMS running
-   *   with `API_SIGNATURE_REQUIRE_SECRET` rejects it.
+   * @deprecated Ignored. Requests are always signed with HMAC-SHA256 keyed by
+   * `apiSecret`; the unkeyed `'sha256'` scheme was removed in 3.0.
    */
-  signatureScheme?: 'sha256' | 'hmac-sha256';
+  signatureScheme?: 'hmac-sha256';
   /**
    * Log each request's method, path and status. Off by default. Query strings,
    * bodies and responses are never logged: a signed request is a credential.

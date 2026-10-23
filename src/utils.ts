@@ -34,42 +34,19 @@ export function canonicalizeJson(obj: unknown): string {
 }
 
 /**
- * The OLD, unkeyed signature: a bare SHA-256 of the canonical JSON of the payload
- * (excluding `sign`). The secret is not part of it — `_apiSecret` is ignored — so
- * it proves only knowledge of the `api_key`. Kept for `signatureScheme: 'sha256'`
- * and for verifying requests from a TMS that has not moved yet; use
- * `generateKeyedSignature` for anything new.
+ * The request signature: `HMAC-SHA256(apiSecret, canonicalJson(params without
+ * sign))`, uppercase hex. Matches the server-side verification.
+ *
+ * Before 3.0 this function returned a bare SHA-256 that ignored the secret; that
+ * scheme is gone — the TMS no longer accepts it.
  */
 export async function generateSignature(
   params: Record<string, unknown>,
-  _apiSecret?: string
-): Promise<string> {
-  // Remove the sign field from the payload
-  const { sign, ...paramsWithoutSign } = params;
-
-  // Canonicalize the payload to produce a deterministic string
-  const stringToSign = canonicalizeJson(paramsWithoutSign);
-
-  // Generate SHA256 hash using Web Crypto API
-  const encoder = new TextEncoder();
-  const data = encoder.encode(stringToSign);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const signature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
-  return signature;
-}
-
-/**
- * Generate the keyed signature: `HMAC-SHA256(apiSecret, canonicalJson(params
- * without sign))`, uppercase hex.
- *
- * This is what the client sends by default. It replaces `generateSignature`, a
- * bare SHA-256 that the secret never entered.
- */
-export async function generateKeyedSignature(
-  params: Record<string, unknown>,
   apiSecret: string
 ): Promise<string> {
+  if (!apiSecret) {
+    throw new Error('Cannot sign the request: apiSecret is missing');
+  }
   const { sign, ...paramsWithoutSign } = params;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -83,6 +60,9 @@ export async function generateKeyedSignature(
   return Array.from(new Uint8Array(mac)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 }
 
+/** @deprecated Same as {@link generateSignature}; kept for code written against 2.6/2.7. */
+export const generateKeyedSignature = generateSignature;
+
 /** Length-constant string comparison. */
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -95,20 +75,14 @@ function constantTimeEqual(a: string, b: string): boolean {
 
 /**
  * Verify a webhook signature from TMS.
- * Takes the parsed JSON body of the webhook request and validates the `sign` field.
- *
- * Pass `apiSecret` — the secret of the `api_key` in the body. Without it only the
- * unkeyed signature can be checked, which anyone who knows the `api_key` can
- * forge. With it, a keyed (HMAC) signature is accepted, and the unkeyed one still
- * is until you set `requireSecret: true` — do that once the TMS signs with the
- * secret. The result's `scheme` says which one the request used.
+ * Takes the parsed JSON body of the webhook request and validates the `sign` field
+ * with `apiSecret` — the secret of the `api_key` in the body. A valid result
+ * proves the request came from the TMS and was not altered.
  *
  * @param body - The parsed JSON body of the webhook request
- * @param options - Optional verification settings
+ * @param options.apiSecret - Secret paired with the body's `api_key` (required)
  * @param options.maxAgeMs - Maximum age of the request in milliseconds (default: 5 minutes). Set to 0 to disable.
- * @param options.apiSecret - Secret paired with the body's `api_key`
- * @param options.requireSecret - Reject unkeyed signatures (default: false)
- * @returns Object with `valid` boolean, the `scheme` used, and optional `error` message
+ * @returns Object with `valid` boolean and optional `error` message
  *
  * @example
  * ```typescript
@@ -126,9 +100,18 @@ function constantTimeEqual(a: string, b: string): boolean {
  */
 export async function verifyWebhookSignature(
   body: Record<string, unknown>,
-  options?: { maxAgeMs?: number; apiSecret?: string; requireSecret?: boolean }
-): Promise<{ valid: boolean; scheme?: 'keyed' | 'unkeyed'; error?: string }> {
+  options: {
+    apiSecret: string;
+    maxAgeMs?: number;
+    /** @deprecated Ignored: the secret is always required since 3.0. */
+    requireSecret?: boolean;
+  }
+): Promise<{ valid: boolean; error?: string }> {
   const { sign, ...payloadWithoutSign } = body;
+
+  if (!options?.apiSecret) {
+    return { valid: false, error: 'Missing apiSecret' };
+  }
 
   if (!sign || typeof sign !== 'string') {
     return { valid: false, error: 'Missing signature' };
@@ -140,7 +123,7 @@ export async function verifyWebhookSignature(
   }
 
   // Check timestamp freshness
-  const maxAge = options?.maxAgeMs ?? 5 * 60 * 1000;
+  const maxAge = options.maxAgeMs ?? 5 * 60 * 1000;
   if (maxAge > 0) {
     const timestamp = parseInt(nonceStr, 10) || 0;
     if (Math.abs(Date.now() - timestamp) > maxAge) {
@@ -148,21 +131,12 @@ export async function verifyWebhookSignature(
     }
   }
 
-  if (options?.apiSecret) {
-    const keyed = await generateKeyedSignature(payloadWithoutSign, options.apiSecret);
-    if (constantTimeEqual(sign, keyed)) {
-      return { valid: true, scheme: 'keyed' };
-    }
+  const expected = await generateSignature(payloadWithoutSign, options.apiSecret);
+  if (!constantTimeEqual(sign, expected)) {
+    return { valid: false, error: 'Invalid signature' };
   }
 
-  if (!options?.requireSecret) {
-    const unkeyed = await generateSignature(payloadWithoutSign);
-    if (constantTimeEqual(sign, unkeyed)) {
-      return { valid: true, scheme: 'unkeyed' };
-    }
-  }
-
-  return { valid: false, error: 'Invalid signature' };
+  return { valid: true };
 }
 
 /**
@@ -226,7 +200,6 @@ export class HttpClient {
   private readonly apiSecret: string;
   private readonly timeout: number;
   private readonly headers: Record<string, string>;
-  private readonly signatureScheme: 'sha256' | 'hmac-sha256';
   private readonly debug: boolean;
   private language?: string;
 
@@ -236,7 +209,6 @@ export class HttpClient {
     this.apiSecret = config.apiSecret;
     this.timeout = config.timeout ?? 30000;
     this.headers = config.headers ?? {};
-    this.signatureScheme = config.signatureScheme ?? 'hmac-sha256';
     this.debug = config.debug ?? false;
     this.language = config.language;
   }
@@ -259,10 +231,7 @@ export class HttpClient {
       api_key: this.apiKey,
       nonceStr: String(Date.now()),
     };
-    signedBody.sign =
-      this.signatureScheme === 'hmac-sha256'
-        ? await generateKeyedSignature(signedBody, this.apiSecret)
-        : await generateSignature(signedBody, this.apiSecret);
+    signedBody.sign = await generateSignature(signedBody, this.apiSecret);
     return signedBody;
   }
 

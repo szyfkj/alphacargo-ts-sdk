@@ -21,17 +21,10 @@ function canonicalizeJson(obj) {
   }
   return JSON.stringify(obj);
 }
-async function generateSignature(params, _apiSecret) {
-  const { sign, ...paramsWithoutSign } = params;
-  const stringToSign = canonicalizeJson(paramsWithoutSign);
-  const encoder = new TextEncoder();
-  const data = encoder.encode(stringToSign);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const signature = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
-  return signature;
-}
-async function generateKeyedSignature(params, apiSecret) {
+async function generateSignature(params, apiSecret) {
+  if (!apiSecret) {
+    throw new Error("Cannot sign the request: apiSecret is missing");
+  }
   const { sign, ...paramsWithoutSign } = params;
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
@@ -44,6 +37,7 @@ async function generateKeyedSignature(params, apiSecret) {
   const mac = await crypto.subtle.sign("HMAC", key, encoder.encode(canonicalizeJson(paramsWithoutSign)));
   return Array.from(new Uint8Array(mac)).map((b) => b.toString(16).padStart(2, "0")).join("").toUpperCase();
 }
+var generateKeyedSignature = generateSignature;
 function constantTimeEqual(a, b) {
   if (a.length !== b.length) return false;
   let mismatch = 0;
@@ -54,6 +48,9 @@ function constantTimeEqual(a, b) {
 }
 async function verifyWebhookSignature(body, options) {
   const { sign, ...payloadWithoutSign } = body;
+  if (!options?.apiSecret) {
+    return { valid: false, error: "Missing apiSecret" };
+  }
   if (!sign || typeof sign !== "string") {
     return { valid: false, error: "Missing signature" };
   }
@@ -61,26 +58,18 @@ async function verifyWebhookSignature(body, options) {
   if (!nonceStr || typeof nonceStr !== "string") {
     return { valid: false, error: "Missing nonceStr" };
   }
-  const maxAge = options?.maxAgeMs ?? 5 * 60 * 1e3;
+  const maxAge = options.maxAgeMs ?? 5 * 60 * 1e3;
   if (maxAge > 0) {
     const timestamp = parseInt(nonceStr, 10) || 0;
     if (Math.abs(Date.now() - timestamp) > maxAge) {
       return { valid: false, error: "Request expired" };
     }
   }
-  if (options?.apiSecret) {
-    const keyed = await generateKeyedSignature(payloadWithoutSign, options.apiSecret);
-    if (constantTimeEqual(sign, keyed)) {
-      return { valid: true, scheme: "keyed" };
-    }
+  const expected = await generateSignature(payloadWithoutSign, options.apiSecret);
+  if (!constantTimeEqual(sign, expected)) {
+    return { valid: false, error: "Invalid signature" };
   }
-  if (!options?.requireSecret) {
-    const unkeyed = await generateSignature(payloadWithoutSign);
-    if (constantTimeEqual(sign, unkeyed)) {
-      return { valid: true, scheme: "unkeyed" };
-    }
-  }
-  return { valid: false, error: "Invalid signature" };
+  return { valid: true };
 }
 function generateNonce(length = 32) {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -118,7 +107,6 @@ var HttpClient = class {
     this.apiSecret = config.apiSecret;
     this.timeout = config.timeout ?? 3e4;
     this.headers = config.headers ?? {};
-    this.signatureScheme = config.signatureScheme ?? "hmac-sha256";
     this.debug = config.debug ?? false;
     this.language = config.language;
   }
@@ -139,7 +127,7 @@ var HttpClient = class {
       api_key: this.apiKey,
       nonceStr: String(Date.now())
     };
-    signedBody.sign = this.signatureScheme === "hmac-sha256" ? await generateKeyedSignature(signedBody, this.apiSecret) : await generateSignature(signedBody, this.apiSecret);
+    signedBody.sign = await generateSignature(signedBody, this.apiSecret);
     return signedBody;
   }
   /**
@@ -574,6 +562,31 @@ var Waybills = class {
   async splitPackage(waybillNo, packageNo, data) {
     return this.http.post(
       `/waybills/${encodeURIComponent(waybillNo)}/packages/${encodeURIComponent(packageNo)}/split`,
+      data
+    );
+  }
+  /**
+   * Update a package, e.g. at warehouse inbound: measured weight and
+   * dimensions, description, photos, cargo handling. Only the fields sent
+   * change; works in any waybill status. A weight/dimension change recomputes
+   * the waybill totals and re-prices its charges.
+   *
+   * @param waybillNo - Waybill number or external waybill number
+   * @param packageNo - The package number or its external number (outParcelNo)
+   * @param data - weight (kg), length/width/height (cm), itemDesc, photos
+   *   (appended to the list), load_properties; at least one
+   *
+   * @example
+   * ```typescript
+   * await client.waybills.updatePackage('TH24020001', 'TH24020001A1', {
+   *   weight: 3.2, length: 30, width: 25, height: 12,
+   *   photos: ['https://example.com/inbound/1.jpg'],
+   * });
+   * ```
+   */
+  async updatePackage(waybillNo, packageNo, data) {
+    return this.http.patch(
+      `/waybills/${encodeURIComponent(waybillNo)}/packages/${encodeURIComponent(packageNo)}`,
       data
     );
   }
@@ -1810,6 +1823,33 @@ var DeliveryEvents = class {
     return response.json();
   }
   /**
+   * Get a temporary Aliyun STS credential to upload POD photos for an event
+   * straight to OSS. It can only write objects under `prefix`, for 15 minutes.
+   * Upload with it, then call {@link attachPods} with the keys. `mode: "server"`
+   * means OSS isn't configured: use {@link uploadPods} instead.
+   *
+   * @param eventId - Delivery event ID
+   */
+  async getPodUploadToken(eventId) {
+    return this.http.post(
+      `/delivery-events/${encodeURIComponent(eventId)}/pods/upload-token`,
+      {}
+    );
+  }
+  /**
+   * Attach POD photos already uploaded to OSS with a token from
+   * {@link getPodUploadToken}.
+   *
+   * @param eventId - Delivery event ID
+   * @param keys - 1 to 10 object keys, each under the token's prefix
+   */
+  async attachPods(eventId, keys) {
+    return this.http.post(
+      `/delivery-events/${encodeURIComponent(eventId)}/pods`,
+      { keys }
+    );
+  }
+  /**
    * Delete a POD image from a delivery event
    *
    * @param eventId - Delivery event ID
@@ -2382,29 +2422,32 @@ var Quotes = class {
    * for, pass `senderAccountId` (sent as the `X-Sender-Account-Id` header); it
    * must belong to your organization.
    *
-   * @param data - Quote request (cargo, addresses, aggregates)
+   * Addresses must carry coordinates — quoting never geocodes on your behalf.
+   * Resolve free text with {@link Address.resolve} first and use the
+   * `confidence` it reports to decide whether the match is good enough to price
+   * against; the resolver always returns something, down to a province centroid.
+   *
+   * @param data - Quote request (addresses, cargo, options)
    * @param options - `senderAccountId`: the sender account that owns the quote
    * @returns The created quotation
    *
    * @example
    * ```typescript
+   * const from = await client.address.resolve({ address: '123 Sukhumvit Rd, Bangkok' });
+   * const to = await client.address.resolve({ address: '456 Nimman Rd, Chiang Mai' });
+   * if (from.confidence < 0.7 || to.confidence < 0.7) {
+   *   throw new Error('Address too vague to price — ask the customer to confirm.');
+   * }
+   *
    * const quote = await client.quotes.create({
    *   request_id: 'req-123',
-   *   draft_order_id: 'draft-456',
-   *   draft_order_version: 1,
-   *   pickup: { address: '123 Sukhumvit Rd, Bangkok' },
-   *   delivery: { address: '456 Nimman Rd, Chiang Mai' },
+   *   pickup: { address: from.formatted_address ?? '…', lat: from.lat, lng: from.lng },
+   *   delivery: { address: to.formatted_address ?? '…', lat: to.lat, lng: to.lng },
    *   items: [
    *     { qty: 2, length_cm: 100, width_cm: 80, height_cm: 60, weight_kg: 25 },
    *   ],
-   *   aggregates: {
-   *     total_weight_kg: 50,
-   *     total_volume_m3: 0.96,
-   *     longest_edge_cm: 100,
-   *     total_package_count: 2,
-   *   },
    * });
-   * console.log(quote.quotation_id, quote.provider, quote.vehicle);
+   * console.log(quote.quotation_id, quote.vehicle, quote.estimated_total);
    * ```
    */
   async create(data, options) {

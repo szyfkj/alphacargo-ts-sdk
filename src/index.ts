@@ -56,6 +56,8 @@ export type {
   SplitPart,
   SplitPackageRequest,
   SplitPackageResponse,
+  UpdatePackageRequest,
+  UpdatePackageResponse,
   AdditionalService,
   CreateAdditionalServicesRequest,
   UpdateAdditionalServiceRequest,
@@ -221,6 +223,7 @@ export type {
   DeliveryEventType,
   DeliveryEvent,
   CreateDeliveryEventRequest,
+  PodUploadToken,
 
   // Reports
   ReportDateRangeParams,
@@ -237,7 +240,6 @@ export type {
   // Quotes
   QuoteAddress,
   QuoteItem,
-  QuoteAggregates,
   QuoteServiceType,
   QuoteBreakdownLine,
   CreateQuoteRequest,

@@ -1,6 +1,6 @@
 {
   "name": "@alphacargo/tms-sdk",
-  "version": "2.7.1",
+  "version": "2.7.2",
   "description": "Node.js SDK for TMS (Transport Management System) API",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -12,7 +12,7 @@
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
     "test": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "pnpm run build"
   },
   "keywords": [
     "tms",
@@ -38,5 +38,11 @@
   "repository": {
     "type": "git",
     "url": ""
+  },
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }
