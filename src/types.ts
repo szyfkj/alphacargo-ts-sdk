@@ -402,10 +402,26 @@ export interface AddPackageRequest {
   parcel: AddParcel;
 }
 
+/**
+ * The package `addPackage` created. When the waybill already has a package
+ * with this `outParcelNo`, `addPackage` throws a `TMSApiError` with code 1008
+ * whose `details` hold that package's `package_no`, `external_package_no` and
+ * `waybill_id`.
+ */
 export interface AddPackageResponse {
+  /** System package number (same as `trackingNo`) */
   package_no: string;
+  /** External package number (same as `outParcelNo`) */
   external_package_no: string;
   waybill_id: string;
+  mchId: string;
+  waybillNo: string;
+  trackingNo: string;
+  outParcelNo: string;
+  /** The number printed on the label */
+  displayParcelNo: string;
+  sortCode?: string;
+  sortDesc?: string;
 }
 
 /** One resulting package of a split — its own dimensions/weight (piece_count 1). */
@@ -539,7 +555,12 @@ export interface ConsolidateWaybillsRequest {
   waybill_ids: string[];
   /** Optional — if omitted, resolved from the route's last leg end unit */
   recipient?: RecipientInput;
-  service_id: string;
+  /** Service for the consolidated master. Defaults to the service every source waybill shares (400 when they have none or differ). */
+  target_service_id?: string;
+  /** Older name for `target_service_id`; `target_service_id` wins when both are sent. */
+  service_id?: string;
+  /** Default `false`: the request is rejected (400) when the source waybills' sender accounts differ. When `true`, the master has no sender account. */
+  allow_cross_sender_account?: boolean;
   /**
    * Delivery route for the consolidated master. Omit to let TMS auto-select the
    * consolidation delivery route from the recipient's service area (postal code),

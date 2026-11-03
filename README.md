@@ -190,10 +190,16 @@ writeFileSync('batch-labels.pdf', Buffer.from(batchPdf));
 
 // Add package to existing waybill
 const pkg = await client.waybills.addPackage('TH24020001', {
-  external_package_no: 'PKG-002',
-  weight: 2.5,
-  products: [{ name: 'Keyboard', sku: 'SKU-002', quantity: 1 }]
+  parcel: {
+    outParcelNo: 'PKG-002',
+    itemDesc: 'Keyboards',
+    weight: 2.5,
+    productList: [{ name: 'Keyboard', sku: 'SKU-002', quantity: 1 }],
+  },
 });
+console.log(pkg.package_no); // also pkg.trackingNo
+// A second call with the same outParcelNo throws TMSApiError code 1008;
+// err.details.package_no is the package already on the waybill.
 
 // Additional services
 const services = await client.waybills.listAdditionalServices('TH24020001');
@@ -213,7 +219,8 @@ const consolidated = await client.waybills.consolidate({
     phone: '0812345678',
     address: { street_line: '456 Road', city: 'Bangkok', state: 'Bangkok', zip_code: '10900' }
   },
-  service_id: 'service-uuid'
+  target_service_id: 'service-uuid', // optional: defaults to the source waybills' shared service
+  allow_cross_sender_account: false   // optional: true allows different sender accounts; the master then has none
 });
 ```
 
