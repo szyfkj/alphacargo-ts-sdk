@@ -286,6 +286,36 @@ var HttpClient = class {
     const signedParams = await this.signRequest(stringifiedParams);
     return this.request("GET", path, { query: signedParams, sign: false });
   }
+  /**
+   * Signed GET of a file (a label PDF). A non-2xx answer throws TMSApiError
+   * with the HTTP status as `statusCode`.
+   */
+  async getFileWithSignature(path, params) {
+    const signedParams = await this.signRequest({ ...params ?? {} });
+    const response = await fetch(`${this.baseUrl}${path}${buildQueryString(signedParams)}`, {
+      method: "GET",
+      headers: {
+        ...this.language ? { "Accept-Language": this.language } : {},
+        ...this.headers
+      },
+      signal: AbortSignal.timeout(this.timeout)
+    });
+    if (this.debug) {
+      console.log(`[TMS SDK] GET ${this.baseUrl}${path} \u2192 ${response.status}`);
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new TMSApiError(
+        {
+          code: data.code ?? response.status,
+          message: data.error ?? data.message ?? "Failed to get file",
+          details: data
+        },
+        response.status
+      );
+    }
+    return response.arrayBuffer();
+  }
 };
 
 // src/resources/waybills.ts
@@ -497,22 +527,17 @@ var Waybills = class {
    * // Get label for a specific package
    * const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
    * ```
+   *
+   * Without `packageId`, the carrier labels of all packages come merged into
+   * one PDF. A package the carrier hasn't booked yet (e.g. just added to a
+   * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
+   * retry after a few seconds.
    */
   async getLabel(waybillNo, params) {
-    const url = `/waybills/${encodeURIComponent(waybillNo)}/label`;
-    const queryParts = [];
-    if (params?.packageId) {
-      queryParts.push(`packageId=${encodeURIComponent(params.packageId)}`);
-    }
-    const queryString = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
-    const response = await fetch(
-      `${this.http.baseUrl}${url}${queryString}`
+    return this.http.getFileWithSignature(
+      `/waybills/${encodeURIComponent(waybillNo)}/label`,
+      params?.packageId ? { packageId: params.packageId } : void 0
     );
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error ?? "Failed to get label");
-    }
-    return response.arrayBuffer();
   }
   /**
    * Generate a merged PDF with labels for multiple waybills

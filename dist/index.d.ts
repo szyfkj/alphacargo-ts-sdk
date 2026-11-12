@@ -2025,6 +2025,11 @@ declare class HttpClient {
      * vs `"page":"1"`) and the signature would not match.
      */
     getWithSignature<T>(path: string, params?: Record<string, unknown>): Promise<T>;
+    /**
+     * Signed GET of a file (a label PDF). A non-2xx answer throws TMSApiError
+     * with the HTTP status as `statusCode`.
+     */
+    getFileWithSignature(path: string, params?: Record<string, string>): Promise<ArrayBuffer>;
 }
 
 /**
@@ -2213,6 +2218,11 @@ declare class Waybills {
      * // Get label for a specific package
      * const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
      * ```
+     *
+     * Without `packageId`, the carrier labels of all packages come merged into
+     * one PDF. A package the carrier hasn't booked yet (e.g. just added to a
+     * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
+     * retry after a few seconds.
      */
     getLabel(waybillNo: string, params?: GetLabelParams): Promise<ArrayBuffer>;
     /**

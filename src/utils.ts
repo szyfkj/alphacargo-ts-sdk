@@ -376,4 +376,35 @@ export class HttpClient {
     const signedParams = await this.signRequest(stringifiedParams);
     return this.request<T>('GET', path, { query: signedParams, sign: false });
   }
+
+  /**
+   * Signed GET of a file (a label PDF). A non-2xx answer throws TMSApiError
+   * with the HTTP status as `statusCode`.
+   */
+  async getFileWithSignature(path: string, params?: Record<string, string>): Promise<ArrayBuffer> {
+    const signedParams = await this.signRequest({ ...(params ?? {}) });
+    const response = await fetch(`${this.baseUrl}${path}${buildQueryString(signedParams)}`, {
+      method: 'GET',
+      headers: {
+        ...(this.language ? { 'Accept-Language': this.language } : {}),
+        ...this.headers,
+      },
+      signal: AbortSignal.timeout(this.timeout),
+    });
+    if (this.debug) {
+      console.log(`[TMS SDK] GET ${this.baseUrl}${path} → ${response.status}`);
+    }
+    if (!response.ok) {
+      const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+      throw new TMSApiError(
+        {
+          code: (data.code as number) ?? response.status,
+          message: (data.error as string) ?? (data.message as string) ?? 'Failed to get file',
+          details: data,
+        },
+        response.status
+      );
+    }
+    return response.arrayBuffer();
+  }
 }

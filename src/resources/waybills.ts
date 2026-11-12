@@ -249,25 +249,17 @@ export class Waybills {
    * // Get label for a specific package
    * const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
    * ```
+   *
+   * Without `packageId`, the carrier labels of all packages come merged into
+   * one PDF. A package the carrier hasn't booked yet (e.g. just added to a
+   * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
+   * retry after a few seconds.
    */
   async getLabel(waybillNo: string, params?: GetLabelParams): Promise<ArrayBuffer> {
-    const url = `/waybills/${encodeURIComponent(waybillNo)}/label`;
-    const queryParts: string[] = [];
-    if (params?.packageId) {
-      queryParts.push(`packageId=${encodeURIComponent(params.packageId)}`);
-    }
-    const queryString = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
-
-    const response = await fetch(
-      `${(this.http as unknown as { baseUrl: string }).baseUrl}${url}${queryString}`
+    return this.http.getFileWithSignature(
+      `/waybills/${encodeURIComponent(waybillNo)}/label`,
+      params?.packageId ? { packageId: params.packageId } : undefined
     );
-
-    if (!response.ok) {
-      const error = await response.json() as Record<string, unknown>;
-      throw new Error((error.error as string) ?? 'Failed to get label');
-    }
-
-    return response.arrayBuffer();
   }
 
   /**
