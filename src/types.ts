@@ -206,6 +206,10 @@ export type LabelSize = 'a4' | 'a6' | '4x6';
 
 export interface GetLabelParams {
   packageId?: string;
+  /** `'pdf'` (default), or `'png'` for printers that take images only. `'zpl'` isn't supported. */
+  format?: Exclude<LabelFormat, 'zpl'>;
+  /** With `format: 'png'`: the image width in pixels, 200–1600 (default 384, a 58 mm printer). */
+  width?: number;
 }
 
 // --- Waybill List / Details ---

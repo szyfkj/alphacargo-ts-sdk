@@ -184,6 +184,10 @@ writeFileSync('label.pdf', Buffer.from(label));
 // Get label for a specific package
 const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
 
+// Label as one PNG (e.g. for a 58 mm thermal printer: 384 px wide, the default)
+const png = await client.waybills.getLabel('TH24020001', { format: 'png', width: 384 });
+writeFileSync('label.png', Buffer.from(png));
+
 // Batch print labels for multiple waybills
 const batchPdf = await client.waybills.getBatchLabel(['TH24020001', 'TH24020002']);
 writeFileSync('batch-labels.pdf', Buffer.from(batchPdf));

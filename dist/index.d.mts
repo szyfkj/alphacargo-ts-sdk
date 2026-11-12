@@ -184,6 +184,10 @@ type LabelFormat = 'pdf' | 'png' | 'zpl';
 type LabelSize = 'a4' | 'a6' | '4x6';
 interface GetLabelParams {
     packageId?: string;
+    /** `'pdf'` (default), or `'png'` for printers that take images only. `'zpl'` isn't supported. */
+    format?: Exclude<LabelFormat, 'zpl'>;
+    /** With `format: 'png'`: the image width in pixels, 200–1600 (default 384, a 58 mm printer). */
+    width?: number;
 }
 interface WaybillListParams extends PaginationParams {
     /** Waybill numbers to search for (space or comma-separated) */
@@ -2217,10 +2221,13 @@ declare class Waybills {
      *
      * // Get label for a specific package
      * const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
+     *
+     * // One PNG, 384 px wide, for a 58 mm thermal printer
+     * const png = await client.waybills.getLabel('TH24020001', { format: 'png', width: 384 });
      * ```
      *
      * Without `packageId`, the carrier labels of all packages come merged into
-     * one PDF. A package the carrier hasn't booked yet (e.g. just added to a
+     * one PDF (with `format: 'png'`, stacked top to bottom in one PNG). A package the carrier hasn't booked yet (e.g. just added to a
      * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
      * retry after a few seconds.
      */

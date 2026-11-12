@@ -30,6 +30,15 @@ import type {
   WaybillBillingRecord,
 } from '../types';
 
+/** The label route's query: only the parameters given. */
+function labelQuery(params?: GetLabelParams): Record<string, string> | undefined {
+  const query: Record<string, string> = {};
+  if (params?.packageId) query.packageId = params.packageId;
+  if (params?.format) query.format = params.format;
+  if (params?.width !== undefined) query.width = String(params.width);
+  return Object.keys(query).length > 0 ? query : undefined;
+}
+
 /**
  * Waybills resource for managing shipping orders
  */
@@ -248,17 +257,20 @@ export class Waybills {
    *
    * // Get label for a specific package
    * const pkgLabel = await client.waybills.getLabel('TH24020001', { packageId: 'pkg-uuid' });
+   *
+   * // One PNG, 384 px wide, for a 58 mm thermal printer
+   * const png = await client.waybills.getLabel('TH24020001', { format: 'png', width: 384 });
    * ```
    *
    * Without `packageId`, the carrier labels of all packages come merged into
-   * one PDF. A package the carrier hasn't booked yet (e.g. just added to a
+   * one PDF (with `format: 'png'`, stacked top to bottom in one PNG). A package the carrier hasn't booked yet (e.g. just added to a
    * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
    * retry after a few seconds.
    */
   async getLabel(waybillNo: string, params?: GetLabelParams): Promise<ArrayBuffer> {
     return this.http.getFileWithSignature(
       `/waybills/${encodeURIComponent(waybillNo)}/label`,
-      params?.packageId ? { packageId: params.packageId } : undefined
+      labelQuery(params)
     );
   }
 
