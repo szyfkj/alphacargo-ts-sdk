@@ -12,6 +12,8 @@ export {
   Payments,
   RateCards,
   SenderAccounts,
+  CarrierAccounts,
+  Agent,
   BillingProfiles,
   DeliveryEvents,
   Reports,
@@ -154,6 +156,33 @@ export type {
   ImportSenderAccountRow,
   ImportSenderAccountsRequest,
   ImportSenderAccountsResponse,
+
+  // Carrier Accounts
+  Carrier,
+  CarrierAccount,
+  CarrierAccountStatus,
+  BindCarrierAccountRequest,
+  ListCarrierAccountsParams,
+  UnbindCarrierAccountResponse,
+  SyncCarrierAccountResponse,
+
+  // Markers (Agent Workbench)
+  SenderAccountMarker,
+  AddSenderAccountMarkerRequest,
+  AddSenderAccountMarkerResponse,
+  RemoveSenderAccountMarkerResponse,
+  MarkerQueueStatus,
+  MarkerQueueEntry,
+
+  // Agent waybills (Agent Workbench)
+  CarrierMatchStatus,
+  AgentWaybill,
+  AgentWaybillDetail,
+  ListAgentWaybillsParams,
+  CarrierWarehouse,
+  LastMileQuoteRequest,
+  LastMileQuote,
+  LastMileOrder,
 
   // Package Label OCR
   PackageLabelOcrParams,

@@ -21,9 +21,11 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   Address: () => Address,
+  Agent: () => Agent,
   BankAccounts: () => BankAccounts,
   BillingProfiles: () => BillingProfiles,
   Billings: () => Billings,
+  CarrierAccounts: () => CarrierAccounts,
   DeliveryEvents: () => DeliveryEvents,
   Invoices: () => Invoices,
   OrganizationUnits: () => OrganizationUnits,
@@ -1696,6 +1698,47 @@ var SenderAccounts = class {
       body
     );
   }
+  /**
+   * This customer's carrier markers (Agent Workbench): each maps a carrier's
+   * code (and optional sub-code) to this customer, and to one of its
+   * recipients when the marker names a shipping address.
+   */
+  async listMarkers(senderAccountId) {
+    const res = await this.http.get(
+      `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers`
+    );
+    return res.data;
+  }
+  /**
+   * Map a carrier marker to this customer (and address). The carrier's
+   * waybills waiting for it are matched. Throws 409 when the same carrier,
+   * code and sub-code are mapped already; 400 when the recipient isn't one of
+   * this customer's.
+   *
+   * @example
+   * ```typescript
+   * // MX: XXMF is the customer
+   * await client.senderAccounts.addMarker(wangId, { carrier_org_id: mxId, code: 'XXMF' });
+   * // MX: XXMF/FLASH is Wang's Flash warehouse
+   * await client.senderAccounts.addMarker(wangId, { carrier_org_id: mxId, code: 'XXMF', sub_code: 'FLASH', recipient_id: flashId });
+   * // CNS: the code aaqom itself names Wang's Bangkok shop
+   * await client.senderAccounts.addMarker(wangId, { carrier_org_id: cnsId, code: 'aaqom', recipient_id: shopId });
+   * ```
+   */
+  async addMarker(senderAccountId, request) {
+    const res = await this.http.post(
+      `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers`,
+      request
+    );
+    return res.data;
+  }
+  /** Remove a marker mapping; its waybills are matched again without it. */
+  async removeMarker(senderAccountId, markerId) {
+    const res = await this.http.delete(
+      `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers/${encodeURIComponent(markerId)}`
+    );
+    return res.data;
+  }
 };
 
 // src/resources/billing-profiles.ts
@@ -2620,6 +2663,131 @@ var ShippingFee = class {
   }
 };
 
+// src/resources/carrier-accounts.ts
+var CarrierAccounts = class {
+  constructor(http) {
+    this.http = http;
+  }
+  /**
+   * The carriers an account can be bound on.
+   *
+   * @example
+   * ```typescript
+   * const { data: carriers } = await client.carrierAccounts.listCarriers();
+   * ```
+   */
+  async listCarriers() {
+    return this.http.get("/carriers");
+  }
+  /** A carrier's warehouses, where a last-mile delivery picks up. */
+  async listWarehouses(carrierOrgId) {
+    return this.http.get(`/carriers/${encodeURIComponent(carrierOrgId)}/warehouses`);
+  }
+  /** The organization's carrier accounts (unbound ones only with `include_unbound`). */
+  async list(params) {
+    const query = {};
+    if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
+    if (params?.include_unbound) query.include_unbound = "true";
+    return this.http.get("/carrier-accounts", query);
+  }
+  async get(id) {
+    const res = await this.http.get(`/carrier-accounts/${encodeURIComponent(id)}`);
+    return res.data;
+  }
+  /**
+   * Bind an account. The first sync is scheduled right away.
+   * Throws 409 when the organization already has a bound account with this
+   * name on the carrier, 503 when credential storage is unavailable.
+   */
+  async bind(request) {
+    const res = await this.http.post("/carrier-accounts", request);
+    return res.data;
+  }
+  /** Unbind: the stored password is destroyed and tracking of its packages stops. Idempotent. */
+  async unbind(id) {
+    const res = await this.http.delete(`/carrier-accounts/${encodeURIComponent(id)}`);
+    return res.data;
+  }
+  /** Sync this account as soon as possible. */
+  async sync(id) {
+    const res = await this.http.post(`/carrier-accounts/${encodeURIComponent(id)}/sync`, {});
+    return res.data;
+  }
+};
+
+// src/resources/agent.ts
+var Agent = class {
+  constructor(http) {
+    this.http = http;
+  }
+  /**
+   * The unmatched-marker queue, grouped per carrier: codes no mapping covers,
+   * sub-codes of known customers with no address mapped, and irregular markers.
+   *
+   * @example
+   * ```typescript
+   * const { data } = await client.agent.unmatchedMarkers({ status: ['customer_unmatched'] });
+   * ```
+   */
+  async unmatchedMarkers(params) {
+    const query = {};
+    if (params?.status?.length) query.status = params.status.join(",");
+    if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
+    return this.http.get("/agent/markers/unmatched", query);
+  }
+  /**
+   * The agent's carrier waybills with carrier fields, customer and delivery address.
+   *
+   * @example
+   * ```typescript
+   * const { data, pagination } = await client.agent.listWaybills({ match_status: ['recipient_unmatched'] });
+   * ```
+   */
+  async listWaybills(params) {
+    const query = {};
+    for (const [key, value] of Object.entries(params ?? {})) {
+      if (value === void 0 || value === null) continue;
+      query[key] = Array.isArray(value) ? value.join(",") : String(value);
+    }
+    return this.http.get("/agent/waybills", query);
+  }
+  /** One carrier waybill with its event timeline and legs. */
+  async getWaybill(id) {
+    const res = await this.http.get(`/agent/waybills/${encodeURIComponent(id)}`);
+    return res.data;
+  }
+  /**
+   * Pick a waybill's delivery address from its customer's recipients, or pass
+   * `null` to drop the choice and let the marker decide. Throws 409 once
+   * delivery was ordered.
+   */
+  async chooseRecipient(id, recipientId) {
+    const res = await this.http.patch(`/agent/waybills/${encodeURIComponent(id)}/recipient`, {
+      recipient_id: recipientId
+    });
+    return res.data;
+  }
+  /**
+   * Price delivering a waybill from a carrier warehouse to its address with an
+   * Alpha Cargo delivery service (FTL). Order it with `orderLastMile` before
+   * `expires_at`.
+   */
+  async quoteLastMile(id, request) {
+    const res = await this.http.post(
+      `/agent/waybills/${encodeURIComponent(id)}/last-mile/quote`,
+      request
+    );
+    return res.data;
+  }
+  /** Order the quoted delivery (on account). Alpha Cargo's dispatchers book the vehicle. */
+  async orderLastMile(id, quotationId) {
+    const res = await this.http.post(`/agent/waybills/${encodeURIComponent(id)}/last-mile`, {
+      quotation_id: quotationId
+    });
+    return res.data;
+  }
+};
+
 // src/client.ts
 var TMSClient = class _TMSClient {
   /**
@@ -2656,6 +2824,8 @@ var TMSClient = class _TMSClient {
     this.bankAccounts = new BankAccounts(this.http);
     this.rateCards = new RateCards(this.http);
     this.senderAccounts = new SenderAccounts(this.http);
+    this.carrierAccounts = new CarrierAccounts(this.http);
+    this.agent = new Agent(this.http);
     this.billingProfiles = new BillingProfiles(this.http);
     this.deliveryEvents = new DeliveryEvents(this.http);
     this.reports = new Reports(this.http);
@@ -2700,9 +2870,11 @@ var TMSClient = class _TMSClient {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   Address,
+  Agent,
   BankAccounts,
   BillingProfiles,
   Billings,
+  CarrierAccounts,
   DeliveryEvents,
   Invoices,
   OrganizationUnits,

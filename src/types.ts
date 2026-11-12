@@ -2183,3 +2183,226 @@ export interface TMSError {
   message: string;
   details?: unknown;
 }
+
+// ============================================================================
+// Carrier Accounts (Agent Workbench)
+// ============================================================================
+
+/** A carrier an agent can bind an account on. */
+export interface Carrier {
+  id: string;
+  display_name: string;
+  /** The host of the carrier portal the account logs in to. */
+  login_host: string;
+}
+
+export type CarrierAccountStatus = 'learning' | 'active' | 'failing' | 'unbound';
+
+export interface CarrierAccount {
+  id: string;
+  organization_id: string;
+  carrier_org_id: string;
+  carrier: { display_name: string } | null;
+  name: string;
+  username: string;
+  status: CarrierAccountStatus;
+  sync_interval_minutes: number;
+  next_sync_at: string | null;
+  last_sync_at: string | null;
+  last_sync_result: Record<string, unknown> | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  unbound_at: string | null;
+}
+
+export interface BindCarrierAccountRequest {
+  carrier_org_id: string;
+  /** Unique per carrier among the organization's bound accounts. */
+  name: string;
+  username: string;
+  /** Stored encrypted; never returned. */
+  password: string;
+}
+
+export interface ListCarrierAccountsParams {
+  carrier_org_id?: string;
+  include_unbound?: boolean;
+}
+
+export interface UnbindCarrierAccountResponse {
+  id: string;
+  /** Packages synced with this account whose tracking was stopped. */
+  tracking_stopped: number;
+  /** Waybills synced with this account that the sync no longer updates. */
+  waybills_frozen: number;
+}
+
+export interface SyncCarrierAccountResponse {
+  id: string;
+  next_sync_at: string;
+}
+
+// ============================================================================
+// Markers (Agent Workbench)
+// ============================================================================
+
+/**
+ * A carrier marker mapped to a customer: (carrier, code, sub_code) → this
+ * sender account, and one of its recipients when the marker names a shipping
+ * address. Unique per organization, carrier, code and sub-code.
+ */
+export interface SenderAccountMarker {
+  id: string;
+  organization_id: string;
+  carrier_org_id: string;
+  /** Upper-case, trimmed. */
+  code: string;
+  /** Null when the code alone is mapped. */
+  sub_code: string | null;
+  sender_account_id: string;
+  /** Set when the marker names a shipping address. */
+  recipient_id: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface AddSenderAccountMarkerRequest {
+  carrier_org_id: string;
+  code: string;
+  sub_code?: string | null;
+  recipient_id?: string | null;
+}
+
+export interface RematchSummary {
+  /** Waybills the change could affect. */
+  examined: number;
+  /** Waybills whose match changed. */
+  changed: number;
+}
+
+export interface AddSenderAccountMarkerResponse {
+  marker: SenderAccountMarker;
+  rematched: RematchSummary;
+}
+
+export interface RemoveSenderAccountMarkerResponse {
+  id: string;
+  rematched: RematchSummary;
+}
+
+export type MarkerQueueStatus = 'irregular' | 'customer_unmatched' | 'recipient_unmatched';
+
+export interface MarkerQueueEntry {
+  status: MarkerQueueStatus;
+  carrier_org_id: string;
+  /** The code to map (null for irregular). */
+  code: string | null;
+  /** For recipient_unmatched: the sub-code with no address mapped. */
+  sub_code: string | null;
+  /** For irregular: the marker as the carrier shows it. */
+  raw_marker: string | null;
+  /** For recipient_unmatched: the customer the code maps to. */
+  sender_account_id: string | null;
+  waybill_count: number;
+  first_seen_at: string | null;
+  /** Up to five raw markers in the group. */
+  sample_markers: string[];
+}
+
+// ============================================================================
+// Agent waybills (Agent Workbench)
+// ============================================================================
+
+export type CarrierMatchStatus = 'no_marker' | 'irregular' | 'customer_unmatched' | 'recipient_unmatched' | 'matched';
+
+export interface AgentWaybill {
+  id: string;
+  waybill_no: string;
+  status: string | null;
+  carrier: { id: string; display_name: string | null };
+  carrier_account_id: string | null;
+  carrier_waybill_no: string | null;
+  marker: { raw: string | null; code: string | null; sub_code: string | null; mode: string | null; issues: string[] };
+  match_status: CarrierMatchStatus;
+  /** The waybill's sender account. */
+  customer: { id: string; name: string; sender_code: string | null } | null;
+  /** The waybill's delivery address. */
+  recipient: { id: string; name: string | null; phone: string | null; address: Record<string, unknown> | null } | null;
+  /** The agent picked the address; re-matching keeps it. */
+  recipient_locked: boolean;
+  raw_status: string | null;
+  unified_status: string | null;
+  transport_mode: string | null;
+  route_label: string | null;
+  eta: string | null;
+  weight: number | null;
+  volume: number | null;
+  volumetric_weight: number | null;
+  first_seen_at: string;
+  last_synced_at: string | null;
+  frozen: boolean;
+}
+
+export interface AgentWaybillDetail extends AgentWaybill {
+  events: {
+    id: string;
+    event_type: string;
+    secondary_event_type: string | null;
+    event_time: string | null;
+    description: string | null;
+    location: string | null;
+  }[];
+  legs: { waybill_id: string; sequence_number: number | null }[];
+}
+
+export interface ListAgentWaybillsParams {
+  carrier_org_id?: string;
+  carrier_account_id?: string;
+  sender_account_id?: string;
+  match_status?: CarrierMatchStatus[];
+  unified_status?: string[];
+  q?: string;
+  include_frozen?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+// ============================================================================
+// Last mile (Agent Workbench, FTL)
+// ============================================================================
+
+export interface CarrierWarehouse {
+  id: string;
+  name: string;
+  code: string;
+  phone: string | null;
+  address: Record<string, unknown> | null;
+  /** False until the address has coordinates. */
+  has_location: boolean;
+}
+
+export interface LastMileQuoteRequest {
+  pickup_unit_id: string;
+  service_id?: string;
+  /** Defaults to the waybill's packages (which then need sizes and weights). */
+  items?: { qty: number; length_cm: number; width_cm: number; height_cm: number; weight_kg: number }[];
+}
+
+export interface LastMileQuote {
+  quotation_id: string;
+  total: number;
+  currency: string;
+  expires_at: string;
+  vehicle: { vehicle_type: string; maximum_load_weight: number; maximum_load_volume: number } | null;
+  breakdown: unknown;
+  pickup_unit_id: string;
+}
+
+export interface LastMileOrder {
+  delivery_id: string;
+  delivery_no: string | null;
+  status: string | null;
+  leg_waybill_id: string;
+}
+

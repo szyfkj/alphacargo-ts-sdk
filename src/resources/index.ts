@@ -17,3 +17,5 @@ export { Wallets } from './wallets';
 export { Quotes } from './quotes';
 export { Address } from './address';
 export { ShippingFee } from './shipping-fee';
+export { CarrierAccounts } from './carrier-accounts';
+export { Agent } from './agent';
