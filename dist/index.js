@@ -482,6 +482,26 @@ var Waybills = class {
     return this.http.patch(`/waybills/${encodeURIComponent(waybillNo)}`, data);
   }
   /**
+   * Order Alpha Cargo's last-mile delivery (FTL, on account) for an agent's
+   * carrier waybill, from a quote of the trip: the waybill gets a last-mile
+   * leg and the delivery goes to Alpha Cargo's dispatchers. Needs the
+   * `carrier_accounts` plan feature.
+   *
+   * @example
+   * ```typescript
+   * const { data: units } = await client.organizationUnits.list({ organization_id: carrierOrgId });
+   * const quote = await client.quotes.create({ pickup, delivery, items, service_ids: [deliveryServiceId] });
+   * const order = await client.waybills.orderLastMile('MX0001', { quotation_id: quote.quotation_id, pickup_unit_id: units.data[0].id });
+   * ```
+   */
+  async orderLastMile(waybillNo, request) {
+    const res = await this.http.post(
+      `/waybills/${encodeURIComponent(waybillNo)}/last-mile`,
+      request
+    );
+    return res.data;
+  }
+  /**
    * Get tracking events for a waybill
    *
    * @param waybillNo - Waybill number
@@ -2679,15 +2699,10 @@ var CarrierAccounts = class {
   async listCarriers() {
     return this.http.get("/carriers");
   }
-  /** A carrier's warehouses, where a last-mile delivery picks up. */
-  async listWarehouses(carrierOrgId) {
-    return this.http.get(`/carriers/${encodeURIComponent(carrierOrgId)}/warehouses`);
-  }
-  /** The organization's carrier accounts (unbound ones only with `include_unbound`). */
+  /** The organization's carrier accounts. */
   async list(params) {
     const query = {};
     if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
-    if (params?.include_unbound) query.include_unbound = "true";
     return this.http.get("/carrier-accounts", query);
   }
   async get(id) {
@@ -2696,14 +2711,14 @@ var CarrierAccounts = class {
   }
   /**
    * Bind an account. The first sync is scheduled right away.
-   * Throws 409 when the organization already has a bound account with this
-   * name on the carrier, 503 when credential storage is unavailable.
+   * Throws 409 when the organization already has an account with this name,
+   * 503 when credential storage is unavailable.
    */
   async bind(request) {
     const res = await this.http.post("/carrier-accounts", request);
     return res.data;
   }
-  /** Unbind: the stored password is destroyed and tracking of its packages stops. Idempotent. */
+  /** Unbind: the stored password is destroyed, tracking of its packages stops and the account is removed. */
   async unbind(id) {
     const res = await this.http.delete(`/carrier-accounts/${encodeURIComponent(id)}`);
     return res.data;
@@ -2734,57 +2749,6 @@ var Agent = class {
     if (params?.status?.length) query.status = params.status.join(",");
     if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
     return this.http.get("/agent/markers/unmatched", query);
-  }
-  /**
-   * The agent's carrier waybills with carrier fields, customer and delivery address.
-   *
-   * @example
-   * ```typescript
-   * const { data, pagination } = await client.agent.listWaybills({ match_status: ['recipient_unmatched'] });
-   * ```
-   */
-  async listWaybills(params) {
-    const query = {};
-    for (const [key, value] of Object.entries(params ?? {})) {
-      if (value === void 0 || value === null) continue;
-      query[key] = Array.isArray(value) ? value.join(",") : String(value);
-    }
-    return this.http.get("/agent/waybills", query);
-  }
-  /** One carrier waybill with its event timeline and legs. */
-  async getWaybill(id) {
-    const res = await this.http.get(`/agent/waybills/${encodeURIComponent(id)}`);
-    return res.data;
-  }
-  /**
-   * Pick a waybill's delivery address from its customer's recipients, or pass
-   * `null` to drop the choice and let the marker decide. Throws 409 once
-   * delivery was ordered.
-   */
-  async chooseRecipient(id, recipientId) {
-    const res = await this.http.patch(`/agent/waybills/${encodeURIComponent(id)}/recipient`, {
-      recipient_id: recipientId
-    });
-    return res.data;
-  }
-  /**
-   * Price delivering a waybill from a carrier warehouse to its address with an
-   * Alpha Cargo delivery service (FTL). Order it with `orderLastMile` before
-   * `expires_at`.
-   */
-  async quoteLastMile(id, request) {
-    const res = await this.http.post(
-      `/agent/waybills/${encodeURIComponent(id)}/last-mile/quote`,
-      request
-    );
-    return res.data;
-  }
-  /** Order the quoted delivery (on account). Alpha Cargo's dispatchers book the vehicle. */
-  async orderLastMile(id, quotationId) {
-    const res = await this.http.post(`/agent/waybills/${encodeURIComponent(id)}/last-mile`, {
-      quotation_id: quotationId
-    });
-    return res.data;
   }
 };
 

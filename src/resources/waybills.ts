@@ -4,6 +4,8 @@ import type {
   CreateWaybillResponse,
   CreateWaybillOptions,
   UpdateWaybillRequest,
+  OrderLastMileRequest,
+  LastMileOrder,
   WaybillEvents,
   GetLabelParams,
   AddPackageRequest,
@@ -199,6 +201,27 @@ export class Waybills {
    */
   async update(waybillNo: string, data: UpdateWaybillRequest): Promise<WaybillDetails> {
     return this.http.patch<WaybillDetails>(`/waybills/${encodeURIComponent(waybillNo)}`, data as unknown as Record<string, unknown>);
+  }
+
+  /**
+   * Order Alpha Cargo's last-mile delivery (FTL, on account) for an agent's
+   * carrier waybill, from a quote of the trip: the waybill gets a last-mile
+   * leg and the delivery goes to Alpha Cargo's dispatchers. Needs the
+   * `carrier_accounts` plan feature.
+   *
+   * @example
+   * ```typescript
+   * const { data: units } = await client.organizationUnits.list({ organization_id: carrierOrgId });
+   * const quote = await client.quotes.create({ pickup, delivery, items, service_ids: [deliveryServiceId] });
+   * const order = await client.waybills.orderLastMile('MX0001', { quotation_id: quote.quotation_id, pickup_unit_id: units.data[0].id });
+   * ```
+   */
+  async orderLastMile(waybillNo: string, request: OrderLastMileRequest): Promise<LastMileOrder> {
+    const res = await this.http.post<{ data: LastMileOrder }>(
+      `/waybills/${encodeURIComponent(waybillNo)}/last-mile`,
+      request as unknown as Record<string, unknown>
+    );
+    return res.data;
   }
 
   /**

@@ -1,7 +1,6 @@
 import { HttpClient } from '../utils';
 import type {
   Carrier,
-  CarrierWarehouse,
   CarrierAccount,
   BindCarrierAccountRequest,
   ListCarrierAccountsParams,
@@ -29,16 +28,10 @@ export class CarrierAccounts {
     return this.http.get<{ data: Carrier[] }>('/carriers');
   }
 
-  /** A carrier's warehouses, where a last-mile delivery picks up. */
-  async listWarehouses(carrierOrgId: string): Promise<{ data: CarrierWarehouse[] }> {
-    return this.http.get<{ data: CarrierWarehouse[] }>(`/carriers/${encodeURIComponent(carrierOrgId)}/warehouses`);
-  }
-
-  /** The organization's carrier accounts (unbound ones only with `include_unbound`). */
+  /** The organization's carrier accounts. */
   async list(params?: ListCarrierAccountsParams): Promise<{ data: CarrierAccount[] }> {
     const query: Record<string, unknown> = {};
     if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
-    if (params?.include_unbound) query.include_unbound = 'true';
     return this.http.get<{ data: CarrierAccount[] }>('/carrier-accounts', query);
   }
 
@@ -49,15 +42,15 @@ export class CarrierAccounts {
 
   /**
    * Bind an account. The first sync is scheduled right away.
-   * Throws 409 when the organization already has a bound account with this
-   * name on the carrier, 503 when credential storage is unavailable.
+   * Throws 409 when the organization already has an account with this name,
+   * 503 when credential storage is unavailable.
    */
   async bind(request: BindCarrierAccountRequest): Promise<CarrierAccount> {
     const res = await this.http.post<{ data: CarrierAccount }>('/carrier-accounts', request as unknown as Record<string, unknown>);
     return res.data;
   }
 
-  /** Unbind: the stored password is destroyed and tracking of its packages stops. Idempotent. */
+  /** Unbind: the stored password is destroyed, tracking of its packages stops and the account is removed. */
   async unbind(id: string): Promise<UnbindCarrierAccountResponse> {
     const res = await this.http.delete<{ data: UnbindCarrierAccountResponse }>(`/carrier-accounts/${encodeURIComponent(id)}`);
     return res.data;

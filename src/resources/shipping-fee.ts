@@ -8,6 +8,10 @@ import type { CreateShippingFeeRequest, ShippingFeeResponse } from '../types';
  * code (the same route-resolution waybill billing uses), then prices the
  * selected service against it with the rate-card engine — read-only, no billing
  * records are written. Intended for customer-facing shipping calculators.
+ *
+ * Without a `service_id` the organization's service selectors choose the
+ * service (as on waybill create); without any route the service's org-wide or
+ * customer-type rate cards price it — how an agent quotes its price list.
  */
 export class ShippingFee {
   constructor(private readonly http: HttpClient) {}

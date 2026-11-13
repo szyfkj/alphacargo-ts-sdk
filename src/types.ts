@@ -180,6 +180,12 @@ export interface UpdateWaybillRequest {
   priority?: number | null;
   requires_signature?: boolean | null;
   sender_account_id?: string | null;
+  /**
+   * One of the sender account's saved recipients. On an agent's carrier
+   * waybill the choice survives re-matching its marker. 409 once delivery
+   * was ordered.
+   */
+  recipient_id?: string;
 }
 
 export interface TrackingRoute {
@@ -343,6 +349,8 @@ export interface WaybillDetails {
   priority?: number;
   recipient?: WaybillRecipient;
   packages?: WaybillPackageSummary[];
+  /** Only on an agent's carrier waybill (Agent Workbench): its marker and how it matched. */
+  carrier_marker?: CarrierMarker;
   sender?: unknown;
   sender_account?: unknown;
   service?: unknown;
@@ -1906,6 +1914,8 @@ export interface ListOrganizationUnitsParams {
   search?: string;
   type?: OrganizationUnitType;
   is_active?: boolean;
+  /** A registered carrier's organization: its active units (warehouses) instead of your own. */
+  organization_id?: string;
   limit?: number;
   offset?: number;
 }
@@ -2034,6 +2044,8 @@ export interface CreateQuoteRequest {
   cargo_notes?: string | null;
   /** Add-on requests, each identified by `key`. */
   addons?: { key: string }[];
+  /** Price only these of your services (and the sellers bound to them). */
+  service_ids?: string[];
 }
 
 /** One line of a quotation's price breakdown (base fare plus any add-ons). */
@@ -2079,8 +2091,11 @@ export interface ShippingFeeDimensions {
 }
 
 export interface CreateShippingFeeRequest {
-  /** The transport-mode service to price (a shipping-service id). */
-  service_id: string;
+  /**
+   * The service to price. Omit it to let the organization's service selectors
+   * choose (e.g. the tier services of an agent's price list).
+   */
+  service_id?: string;
   /** Actual weight in kilograms. */
   weight_kg: number;
   /** Optional box dimensions (cm) — used to derive volume and volumetric weight. */
@@ -2089,8 +2104,11 @@ export interface CreateShippingFeeRequest {
   package_count?: number;
   /** Extra service ids to price alongside the primary (e.g. wooden crate). */
   addon_service_ids?: string[];
-  /** Recipient postal code — resolves the destination service area / route. */
-  destination_postal_code: string;
+  /**
+   * Recipient postal code — resolves the destination service area / route.
+   * With no route at all, the service's org-wide or customer-type rate cards price it.
+   */
+  destination_postal_code?: string;
   /** ISO country of the destination. Defaults to "TH" server-side. */
   country?: string;
   /**
@@ -2099,6 +2117,12 @@ export interface CreateShippingFeeRequest {
    * the start of the after-consolidation delivery route.
    */
   before_consolidation_route_id?: string | null;
+  /** The customer: its type selects customer-type services and rate cards. */
+  sender_account_id?: string;
+  /** Waybill tags, for service selectors that test them. */
+  tags?: string[];
+  /** Product category, for service selectors that test it. */
+  product_category_id?: string;
 }
 
 export interface ShippingFeeBreakdownLine {
@@ -2107,6 +2131,8 @@ export interface ShippingFeeBreakdownLine {
 }
 
 export interface ShippingFeeResponse {
+  /** The service priced: the one requested, or the one the selectors chose. */
+  service_id: string;
   /** Total estimated fee (primary service + any add-ons), in `currency`. */
   cost: number;
   /** ISO 4217 currency of `cost` (defaults to THB). */
@@ -2196,7 +2222,7 @@ export interface Carrier {
   login_host: string;
 }
 
-export type CarrierAccountStatus = 'learning' | 'active' | 'failing' | 'unbound';
+export type CarrierAccountStatus = 'learning' | 'active' | 'failing';
 
 export interface CarrierAccount {
   id: string;
@@ -2213,12 +2239,11 @@ export interface CarrierAccount {
   created_by: string | null;
   created_at: string;
   updated_at: string;
-  unbound_at: string | null;
 }
 
 export interface BindCarrierAccountRequest {
   carrier_org_id: string;
-  /** Unique per carrier among the organization's bound accounts. */
+  /** Unique among the organization's carrier accounts (any case). */
   name: string;
   username: string;
   /** Stored encrypted; never returned. */
@@ -2227,15 +2252,12 @@ export interface BindCarrierAccountRequest {
 
 export interface ListCarrierAccountsParams {
   carrier_org_id?: string;
-  include_unbound?: boolean;
 }
 
 export interface UnbindCarrierAccountResponse {
   id: string;
   /** Packages synced with this account whose tracking was stopped. */
   tracking_stopped: number;
-  /** Waybills synced with this account that the sync no longer updates. */
-  waybills_frozen: number;
 }
 
 export interface SyncCarrierAccountResponse {
@@ -2311,91 +2333,34 @@ export interface MarkerQueueEntry {
 }
 
 // ============================================================================
-// Agent waybills (Agent Workbench)
+// Carrier waybills and last mile (Agent Workbench)
 // ============================================================================
 
 export type CarrierMatchStatus = 'no_marker' | 'irregular' | 'customer_unmatched' | 'recipient_unmatched' | 'matched';
 
-export interface AgentWaybill {
+/**
+ * An agent's carrier waybill's marker (唛头) and its match. The match itself
+ * is the waybill's `sender_account_id` / `recipient_id`; the carrier's number
+ * is its `external_waybill_no`.
+ */
+export interface CarrierMarker {
   id: string;
-  waybill_no: string;
-  status: string | null;
-  carrier: { id: string; display_name: string | null };
-  carrier_account_id: string | null;
-  carrier_waybill_no: string | null;
-  marker: { raw: string | null; code: string | null; sub_code: string | null; mode: string | null; issues: string[] };
+  carrier_org_id: string;
+  marker_raw: string | null;
+  marker_code: string | null;
+  marker_sub_code: string | null;
+  marker_mode: string | null;
+  marker_issues: string[];
   match_status: CarrierMatchStatus;
-  /** The waybill's sender account. */
-  customer: { id: string; name: string; sender_code: string | null } | null;
-  /** The waybill's delivery address. */
-  recipient: { id: string; name: string | null; phone: string | null; address: Record<string, unknown> | null } | null;
-  /** The agent picked the address; re-matching keeps it. */
+  /** The agent picked the recipient; re-matching keeps it. */
   recipient_locked: boolean;
-  raw_status: string | null;
-  unified_status: string | null;
-  transport_mode: string | null;
-  route_label: string | null;
-  eta: string | null;
-  weight: number | null;
-  volume: number | null;
-  volumetric_weight: number | null;
   first_seen_at: string;
-  last_synced_at: string | null;
-  frozen: boolean;
 }
 
-export interface AgentWaybillDetail extends AgentWaybill {
-  events: {
-    id: string;
-    event_type: string;
-    secondary_event_type: string | null;
-    event_time: string | null;
-    description: string | null;
-    location: string | null;
-  }[];
-  legs: { waybill_id: string; sequence_number: number | null }[];
-}
-
-export interface ListAgentWaybillsParams {
-  carrier_org_id?: string;
-  carrier_account_id?: string;
-  sender_account_id?: string;
-  match_status?: CarrierMatchStatus[];
-  unified_status?: string[];
-  q?: string;
-  include_frozen?: boolean;
-  limit?: number;
-  offset?: number;
-}
-
-// ============================================================================
-// Last mile (Agent Workbench, FTL)
-// ============================================================================
-
-export interface CarrierWarehouse {
-  id: string;
-  name: string;
-  code: string;
-  phone: string | null;
-  address: Record<string, unknown> | null;
-  /** False until the address has coordinates. */
-  has_location: boolean;
-}
-
-export interface LastMileQuoteRequest {
-  pickup_unit_id: string;
-  service_id?: string;
-  /** Defaults to the waybill's packages (which then need sizes and weights). */
-  items?: { qty: number; length_cm: number; width_cm: number; height_cm: number; weight_kg: number }[];
-}
-
-export interface LastMileQuote {
+export interface OrderLastMileRequest {
+  /** A `POST /quotes` quote from the warehouse to the waybill's address. */
   quotation_id: string;
-  total: number;
-  currency: string;
-  expires_at: string;
-  vehicle: { vehicle_type: string; maximum_load_weight: number; maximum_load_volume: number } | null;
-  breakdown: unknown;
+  /** The carrier's warehouse (`organizationUnits.list({ organization_id })`). */
   pickup_unit_id: string;
 }
 
@@ -2405,4 +2370,3 @@ export interface LastMileOrder {
   status: string | null;
   leg_waybill_id: string;
 }
-

@@ -153,7 +153,7 @@ await zhClient.waybills.get('UNKNOWN123');
 | **Rate Cards** | `client.rateCards` | Pricing rate cards |
 | **Sender Accounts** | `client.senderAccounts` | Sender accounts, addresses and carrier-marker codes |
 | **Carrier Accounts** | `client.carrierAccounts` | An agent's logins on carrier portals (bind, list, unbind, sync) |
-| **Agent** | `client.agent` | Agent Workbench: carrier waybills, delivery address choice, the unmatched-marker queue |
+| **Agent** | `client.agent` | Agent Workbench: the unmatched-marker queue (carrier waybills are ordinary `client.waybills`; last mile is `client.quotes.create` + `client.waybills.orderLastMile`) |
 | **Billing Profiles** | `client.billingProfiles` | Automated billing cycles |
 | **Delivery Events** | `client.deliveryEvents` | Delivery events and POD photos |
 | **Reports** | `client.reports` | Financial reports |

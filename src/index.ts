@@ -174,14 +174,10 @@ export type {
   MarkerQueueStatus,
   MarkerQueueEntry,
 
-  // Agent waybills (Agent Workbench)
+  // Carrier waybills and last mile (Agent Workbench)
   CarrierMatchStatus,
-  AgentWaybill,
-  AgentWaybillDetail,
-  ListAgentWaybillsParams,
-  CarrierWarehouse,
-  LastMileQuoteRequest,
-  LastMileQuote,
+  CarrierMarker,
+  OrderLastMileRequest,
   LastMileOrder,
 
   // Package Label OCR
