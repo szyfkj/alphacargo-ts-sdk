@@ -19,6 +19,7 @@ export {
   Reports,
   Regions,
   WaybillRoutes,
+  Services,
   Organizations,
   OrganizationUnits,
   ProductCategories,
@@ -197,6 +198,12 @@ export type {
   BillingCycleRun,
   ListCycleRunsParams,
   TriggerCycleRequest,
+
+  // Services
+  Service,
+  ServiceSelector,
+  ServiceSelectorCondition,
+  ListServicesParams,
 
   // Waybill Routes
   WaybillRouteUnitAddress,

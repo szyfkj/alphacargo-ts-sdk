@@ -1167,6 +1167,8 @@ export interface RateCard {
   /** Currency of unit_price. Defaults to "THB". */
   currency: CurrencyCode;
   billing_unit: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
+  /** The least this card charges: amount = max(minimum_spend, quantity × unit_price). */
+  minimum_spend?: number | null;
   service_id: string;
   service?: { id: string; name: string };
   route_id?: string;
@@ -1181,6 +1183,8 @@ export interface RateCard {
 export interface CreateRateCardRequest {
   name: string;
   unit_price: number;
+  /** The least the card charges (non-negative). */
+  minimum_spend?: number | null;
   /** Currency of unit_price (ISO 4217). Defaults to "THB". */
   currency?: CurrencyCode;
   billing_unit: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
@@ -1196,6 +1200,8 @@ export interface CreateRateCardRequest {
 export interface UpdateRateCardRequest {
   name?: string;
   unit_price?: number;
+  /** The least the card charges (non-negative); null removes it. */
+  minimum_spend?: number | null;
   /** Currency of unit_price (ISO 4217). */
   currency?: CurrencyCode;
   billing_unit?: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
@@ -1525,6 +1531,50 @@ export interface WaybillRouteLeg {
   end_unit: WaybillRouteUnit | null;
   consolidation: string;
   sequence_number: number;
+}
+
+// ============================================================================
+// Services (read-only)
+// ============================================================================
+
+/** One condition of a service selector, e.g. `{ field: 'route_id', operator: 'equals', value: '<uuid>' }`. */
+export interface ServiceSelectorCondition {
+  /** e.g. `route_id`, `chargeable_weight`, `tags`, `sender_account_type`, `weight_volume_ratio` */
+  field: string;
+  /** e.g. `equals`, `in`, `contains`, `greater_than`, `less_than_or_equal` */
+  operator: string;
+  value: unknown;
+}
+
+/** The conditions that choose a service for a waybill (all must hold). */
+export interface ServiceSelector {
+  id: string;
+  name: string;
+  conditions: ServiceSelectorCondition[];
+  priority: number;
+}
+
+export interface Service {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  pricing_method: string;
+  minimum_spend: number;
+  /** Charge on whole kilograms (rounded up). */
+  round_up: boolean;
+  /** Several matching cards: charge the dearest, not the cheapest. */
+  charge_up: boolean;
+  fulfillment_phase: string;
+  /** null when no selector chooses the service (it is picked explicitly or as the default). */
+  selector: ServiceSelector | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListServicesParams {
+  /** Only services of this type, e.g. `ltl_transport`, `ftl_transport`. */
+  type?: string;
 }
 
 export interface WaybillRoute {

@@ -14,6 +14,7 @@ import {
   Reports,
   Regions,
   WaybillRoutes,
+  Services,
   Organizations,
   OrganizationUnits,
   ProductCategories,
@@ -121,6 +122,11 @@ export class TMSClient {
   public readonly waybillRoutes: WaybillRoutes;
 
   /**
+   * Services resource (read-only): services with their selectors
+   */
+  public readonly services: Services;
+
+  /**
    * Organizations resource for managing the current organization
    */
   public readonly organizations: Organizations;
@@ -199,6 +205,7 @@ export class TMSClient {
     this.reports = new Reports(this.http);
     this.regions = new Regions(this.http);
     this.waybillRoutes = new WaybillRoutes(this.http);
+    this.services = new Services(this.http);
     this.organizations = new Organizations(this.http);
     this.organizationUnits = new OrganizationUnits(this.http);
     this.productCategories = new ProductCategories(this.http);

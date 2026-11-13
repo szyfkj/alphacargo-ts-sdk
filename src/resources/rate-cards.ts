@@ -1,5 +1,6 @@
 import { HttpClient } from '../utils';
 import type {
+  PaginatedResponse,
   RateCard,
   CreateRateCardRequest,
   UpdateRateCardRequest,
@@ -16,17 +17,17 @@ export class RateCards {
    * List rate cards with optional filters
    *
    * @param params - Query parameters for filtering
-   * @returns Array of rate cards
+   * @returns A page of rate cards (`data`, `total`, `page`, …), newest first
    *
    * @example
    * ```typescript
-   * const rateCards = await client.rateCards.list({
+   * const { data: rateCards } = await client.rateCards.list({
    *   service_id: 'service-uuid'
    * });
    * ```
    */
-  async list(params?: ListRateCardsParams): Promise<RateCard[]> {
-    return this.http.get<RateCard[]>('/rate-cards', params as Record<string, unknown>);
+  async list(params?: ListRateCardsParams): Promise<PaginatedResponse<RateCard>> {
+    return this.http.get<PaginatedResponse<RateCard>>('/rate-cards', params as Record<string, unknown>);
   }
 
   /**

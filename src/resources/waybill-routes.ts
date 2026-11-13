@@ -1,5 +1,5 @@
 import { HttpClient } from '../utils';
-import type { WaybillRoute, WaybillRouteWithLegs, ListWaybillRoutesParams } from '../types';
+import type { PaginatedResponse, WaybillRoute, WaybillRouteWithLegs, ListWaybillRoutesParams } from '../types';
 
 /**
  * WaybillRoutes resource for querying waybill routes
@@ -11,15 +11,15 @@ export class WaybillRoutes {
    * List waybill routes with optional filters
    *
    * @param params - Query parameters for filtering
-   * @returns Array of waybill routes
+   * @returns A page of waybill routes (`data`, `total`, `page`, …)
    *
    * @example
    * ```typescript
-   * const routes = await client.waybillRoutes.list({ search: 'BKK' });
+   * const { data: routes } = await client.waybillRoutes.list({ search: 'BKK' });
    * ```
    */
-  async list(params?: ListWaybillRoutesParams): Promise<WaybillRoute[]> {
-    return this.http.get<WaybillRoute[]>('/waybill-routes', params as Record<string, unknown>);
+  async list(params?: ListWaybillRoutesParams): Promise<PaginatedResponse<WaybillRoute>> {
+    return this.http.get<PaginatedResponse<WaybillRoute>>('/waybill-routes', params as Record<string, unknown>);
   }
 
   /**

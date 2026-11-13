@@ -1044,6 +1044,8 @@ interface RateCard {
     /** Currency of unit_price. Defaults to "THB". */
     currency: CurrencyCode;
     billing_unit: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
+    /** The least this card charges: amount = max(minimum_spend, quantity × unit_price). */
+    minimum_spend?: number | null;
     service_id: string;
     service?: {
         id: string;
@@ -1060,6 +1062,8 @@ interface RateCard {
 interface CreateRateCardRequest {
     name: string;
     unit_price: number;
+    /** The least the card charges (non-negative). */
+    minimum_spend?: number | null;
     /** Currency of unit_price (ISO 4217). Defaults to "THB". */
     currency?: CurrencyCode;
     billing_unit: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
@@ -1074,6 +1078,8 @@ interface CreateRateCardRequest {
 interface UpdateRateCardRequest {
     name?: string;
     unit_price?: number;
+    /** The least the card charges (non-negative); null removes it. */
+    minimum_spend?: number | null;
     /** Currency of unit_price (ISO 4217). */
     currency?: CurrencyCode;
     billing_unit?: 'kg' | 'cbm' | 'per_waybill' | 'per_package';
@@ -1355,6 +1361,42 @@ interface WaybillRouteLeg {
     end_unit: WaybillRouteUnit | null;
     consolidation: string;
     sequence_number: number;
+}
+/** One condition of a service selector, e.g. `{ field: 'route_id', operator: 'equals', value: '<uuid>' }`. */
+interface ServiceSelectorCondition {
+    /** e.g. `route_id`, `chargeable_weight`, `tags`, `sender_account_type`, `weight_volume_ratio` */
+    field: string;
+    /** e.g. `equals`, `in`, `contains`, `greater_than`, `less_than_or_equal` */
+    operator: string;
+    value: unknown;
+}
+/** The conditions that choose a service for a waybill (all must hold). */
+interface ServiceSelector {
+    id: string;
+    name: string;
+    conditions: ServiceSelectorCondition[];
+    priority: number;
+}
+interface Service {
+    id: string;
+    name: string;
+    description: string | null;
+    type: string;
+    pricing_method: string;
+    minimum_spend: number;
+    /** Charge on whole kilograms (rounded up). */
+    round_up: boolean;
+    /** Several matching cards: charge the dearest, not the cheapest. */
+    charge_up: boolean;
+    fulfillment_phase: string;
+    /** null when no selector chooses the service (it is picked explicitly or as the default). */
+    selector: ServiceSelector | null;
+    created_at: string;
+    updated_at: string;
+}
+interface ListServicesParams {
+    /** Only services of this type, e.g. `ltl_transport`, `ftl_transport`. */
+    type?: string;
 }
 interface WaybillRoute {
     id: string;
@@ -3124,16 +3166,16 @@ declare class RateCards {
      * List rate cards with optional filters
      *
      * @param params - Query parameters for filtering
-     * @returns Array of rate cards
+     * @returns A page of rate cards (`data`, `total`, `page`, …), newest first
      *
      * @example
      * ```typescript
-     * const rateCards = await client.rateCards.list({
+     * const { data: rateCards } = await client.rateCards.list({
      *   service_id: 'service-uuid'
      * });
      * ```
      */
-    list(params?: ListRateCardsParams): Promise<RateCard[]>;
+    list(params?: ListRateCardsParams): Promise<PaginatedResponse<RateCard>>;
     /**
      * Get a single rate card by ID
      *
@@ -3186,6 +3228,30 @@ declare class RateCards {
      * @param id - Rate card ID
      */
     delete(id: string): Promise<void>;
+}
+
+/**
+ * Services resource (read-only): the organization's services, each with the
+ * selector that chooses it for a waybill. With `rateCards` this is the
+ * organization's price list — e.g. an agent's route tiers, each a service whose
+ * selector tests the route and a chargeable-weight band.
+ */
+declare class Services {
+    private readonly http;
+    constructor(http: HttpClient);
+    /**
+     * List the organization's services, by name.
+     *
+     * @example
+     * ```typescript
+     * const services = await client.services.list();
+     * const tiers = services.filter((s) =>
+     *   s.selector?.conditions.some((c) => c.field === 'route_id' && c.value === routeId));
+     * ```
+     */
+    list(params?: ListServicesParams): Promise<Service[]>;
+    /** Get one of the organization's services. */
+    get(id: string): Promise<Service>;
 }
 
 interface ListSenderAccountsResponse {
@@ -3772,14 +3838,14 @@ declare class WaybillRoutes {
      * List waybill routes with optional filters
      *
      * @param params - Query parameters for filtering
-     * @returns Array of waybill routes
+     * @returns A page of waybill routes (`data`, `total`, `page`, …)
      *
      * @example
      * ```typescript
-     * const routes = await client.waybillRoutes.list({ search: 'BKK' });
+     * const { data: routes } = await client.waybillRoutes.list({ search: 'BKK' });
      * ```
      */
-    list(params?: ListWaybillRoutesParams): Promise<WaybillRoute[]>;
+    list(params?: ListWaybillRoutesParams): Promise<PaginatedResponse<WaybillRoute>>;
     /**
      * Get a single waybill route by ID (includes legs)
      *
@@ -4392,6 +4458,10 @@ declare class TMSClient {
      */
     readonly waybillRoutes: WaybillRoutes;
     /**
+     * Services resource (read-only): services with their selectors
+     */
+    readonly services: Services;
+    /**
      * Organizations resource for managing the current organization
      */
     readonly organizations: Organizations;
@@ -4460,4 +4530,4 @@ declare class TMSClient {
     withLanguage(language?: TMSLanguage): TMSClient;
 }
 
-export { type AddPackageRequest, type AddPackageResponse, type AddSenderAccountMarkerRequest, type AddSenderAccountMarkerResponse, type AdditionalService, Address, type AddressResolveByCoords, type AddressResolveByText, type AddressResolveByUrl, type AddressResolveOptions, type AddressResolveRequest, type AddressType, Agent, type AllocateWaybillNumberResponse, type AvailablePaymentMethod, type BankAccountAvailability, BankAccounts, type BankSlip, type BankTransferInstructions, type BatchLabelRequest, type BillingByServiceParams, type BillingByServiceReport, type BillingCycle, type BillingCycleRun, type BillingEmailRequest, type BillingProfile, BillingProfiles, type BillingRecord, type BillingStatus, type BillingType, Billings, type BindCarrierAccountRequest, type Carrier, type CarrierAccount, type CarrierAccountStatus, CarrierAccounts, type CarrierMarker, type CarrierMatchStatus, type ConsolidateWaybillsRequest, type ConsolidateWaybillsResponse, type CreateAdditionalServicesRequest, type CreateBankSlipRequest, type CreateBillingProfileRequest, type CreateBillingRequest, type CreateDeliveryEventRequest, type CreateInvoiceRequest, type CreateOrganizationUnitRequest, type CreatePaymentRequest, type CreateProductCategoryRequest, type CreateQuoteRequest, type CreateQuoteResponse, type CreateRateCardRequest, type CreateSenderAccountRecipientAddress, type CreateSenderAccountRecipientRequest, type CreateSenderAccountRequest, type CreateShippingFeeRequest, type CreateWaybillRequest, type CreateWaybillResponse, type CycleRunStatus, type DateRangeParams, type DeliveryEvent, type DeliveryEventType, DeliveryEvents, type FlashPayAppResponse, type FlashPayQRResponse, type FlashPayRequest, type FlashPayResponse, type FlashPayType, type GeocodeSource, type GetLabelParams, type ImportSenderAccountRow, type ImportSenderAccountsRequest, type ImportSenderAccountsResponse, type Invoice, type InvoiceLineItem, type InvoiceStatus, Invoices, type IssueInvoiceRequest, type LabelFormat, type LabelSize, type LastMileOrder, type ListBillingProfilesParams, type ListBillingsParams, type ListCarrierAccountsParams, type ListCycleRunsParams, type ListInvoicesParams, type ListOrganizationUnitsParams, type ListPaymentsParams, type ListProductCategoriesParams, type ListRateCardsParams, type ListRegionsParams, type ListSenderAccountRecipientsParams, type ListSenderAccountsParams, type ListWalletTransactionsParams, type ListWaybillRoutesParams, type MarkerQueueEntry, type MarkerQueueStatus, type OrderLastMileRequest, type Organization, type OrganizationUnit, type OrganizationUnitAddress, type OrganizationUnitType, OrganizationUnits, Organizations, type OutstandingInvoicesParams, type OutstandingInvoicesReport, type PackageLabelOcrParams, type PackageLabelOcrResponse, type PackageLabelOcrResult, type PaginatedResponse, type PaginationParams, type Parcel, type PayInvoiceWithWalletRequest, type PayInvoiceWithWalletResponse, type Payment, type PaymentAllocation, type PaymentHistoryParams, type PaymentHistoryReport, type PaymentMethod, type PaymentMethodUnavailableReason, type PaymentMethodsParams, type PaymentMethodsResponse, type PaymentMode, type PaymentStatus, type PaymentTerms, Payments, type PodUploadToken, type Product, ProductCategories, type ProductCategory, type ProductCategoryTreeNode, type PublicBankAccount, type QuoteAddress, type QuoteBreakdownLine, type QuoteItem, type QuoteServiceType, Quotes, type RateCard, RateCards, type RecipientAddress, type RecipientInput, type RegionCity, type RegionDistrict, type RegionHierarchy, type RegionProvince, Regions, type RemoveSenderAccountMarkerResponse, type ReplaceAllocationsRequest, type ReportDateRangeParams, type ReportPeriod, Reports, type ResolvedAddress, type RevenueSummaryParams, type RevenueSummaryReport, type SendEmailRequest, type SendInvoiceEmailRequest, type SenderAccount, type SenderAccountMarker, type SenderAccountOwnershipRequest, type SenderAccountOwnershipResponse, type SenderAccountRecipient, SenderAccounts, ShippingFee, type ShippingFeeBreakdownLine, type ShippingFeeDimensions, type ShippingFeeResponse, type SplitPackageRequest, type SplitPackageResponse, type SplitPart, type SyncCarrierAccountResponse, TMSApiError, TMSClient, type TMSClientConfig, type TMSError, type TMSLanguage, type TopUpWalletRequest, type TrackingRoute, type TriggerCycleRequest, type UnbindCarrierAccountResponse, type UpdateAdditionalServiceRequest, type UpdateBillingProfileRequest, type UpdateBillingRequest, type UpdateInvoiceRequest, type UpdateOrganizationRequest, type UpdateOrganizationUnitRequest, type UpdatePackageRequest, type UpdatePackageResponse, type UpdatePaymentRequest, type UpdateProductCategoryRequest, type UpdateRateCardRequest, type UpdateSenderAccountRecipientRequest, type UpdateSenderAccountRequest, type VerifyBankSlipRequest, type WalletBalance, type WalletTopUpAppResponse, type WalletTopUpQRResponse, type WalletTopUpResponse, type WalletTransaction, type WalletTransactionType, type WalletTransactionsResponse, Wallets, type WaybillAddress, type WaybillBillingRecord, type WaybillDelegation, type WaybillDetails, type WaybillEvents, type WaybillListParams, type WaybillPackage, type WaybillPackageSummary, type WaybillRecipient, type WaybillRoute, type WaybillRouteLeg, type WaybillRouteUnit, type WaybillRouteUnitAddress, type WaybillRouteWithLegs, WaybillRoutes, type WaybillServiceCount, type WaybillServiceCountParams, type WaybillSummary, Waybills, canonicalizeJson, generateKeyedSignature, generateNonce, generateSignature, getTimestamp, verifyWebhookSignature };
+export { type AddPackageRequest, type AddPackageResponse, type AddSenderAccountMarkerRequest, type AddSenderAccountMarkerResponse, type AdditionalService, Address, type AddressResolveByCoords, type AddressResolveByText, type AddressResolveByUrl, type AddressResolveOptions, type AddressResolveRequest, type AddressType, Agent, type AllocateWaybillNumberResponse, type AvailablePaymentMethod, type BankAccountAvailability, BankAccounts, type BankSlip, type BankTransferInstructions, type BatchLabelRequest, type BillingByServiceParams, type BillingByServiceReport, type BillingCycle, type BillingCycleRun, type BillingEmailRequest, type BillingProfile, BillingProfiles, type BillingRecord, type BillingStatus, type BillingType, Billings, type BindCarrierAccountRequest, type Carrier, type CarrierAccount, type CarrierAccountStatus, CarrierAccounts, type CarrierMarker, type CarrierMatchStatus, type ConsolidateWaybillsRequest, type ConsolidateWaybillsResponse, type CreateAdditionalServicesRequest, type CreateBankSlipRequest, type CreateBillingProfileRequest, type CreateBillingRequest, type CreateDeliveryEventRequest, type CreateInvoiceRequest, type CreateOrganizationUnitRequest, type CreatePaymentRequest, type CreateProductCategoryRequest, type CreateQuoteRequest, type CreateQuoteResponse, type CreateRateCardRequest, type CreateSenderAccountRecipientAddress, type CreateSenderAccountRecipientRequest, type CreateSenderAccountRequest, type CreateShippingFeeRequest, type CreateWaybillRequest, type CreateWaybillResponse, type CycleRunStatus, type DateRangeParams, type DeliveryEvent, type DeliveryEventType, DeliveryEvents, type FlashPayAppResponse, type FlashPayQRResponse, type FlashPayRequest, type FlashPayResponse, type FlashPayType, type GeocodeSource, type GetLabelParams, type ImportSenderAccountRow, type ImportSenderAccountsRequest, type ImportSenderAccountsResponse, type Invoice, type InvoiceLineItem, type InvoiceStatus, Invoices, type IssueInvoiceRequest, type LabelFormat, type LabelSize, type LastMileOrder, type ListBillingProfilesParams, type ListBillingsParams, type ListCarrierAccountsParams, type ListCycleRunsParams, type ListInvoicesParams, type ListOrganizationUnitsParams, type ListPaymentsParams, type ListProductCategoriesParams, type ListRateCardsParams, type ListRegionsParams, type ListSenderAccountRecipientsParams, type ListSenderAccountsParams, type ListServicesParams, type ListWalletTransactionsParams, type ListWaybillRoutesParams, type MarkerQueueEntry, type MarkerQueueStatus, type OrderLastMileRequest, type Organization, type OrganizationUnit, type OrganizationUnitAddress, type OrganizationUnitType, OrganizationUnits, Organizations, type OutstandingInvoicesParams, type OutstandingInvoicesReport, type PackageLabelOcrParams, type PackageLabelOcrResponse, type PackageLabelOcrResult, type PaginatedResponse, type PaginationParams, type Parcel, type PayInvoiceWithWalletRequest, type PayInvoiceWithWalletResponse, type Payment, type PaymentAllocation, type PaymentHistoryParams, type PaymentHistoryReport, type PaymentMethod, type PaymentMethodUnavailableReason, type PaymentMethodsParams, type PaymentMethodsResponse, type PaymentMode, type PaymentStatus, type PaymentTerms, Payments, type PodUploadToken, type Product, ProductCategories, type ProductCategory, type ProductCategoryTreeNode, type PublicBankAccount, type QuoteAddress, type QuoteBreakdownLine, type QuoteItem, type QuoteServiceType, Quotes, type RateCard, RateCards, type RecipientAddress, type RecipientInput, type RegionCity, type RegionDistrict, type RegionHierarchy, type RegionProvince, Regions, type RemoveSenderAccountMarkerResponse, type ReplaceAllocationsRequest, type ReportDateRangeParams, type ReportPeriod, Reports, type ResolvedAddress, type RevenueSummaryParams, type RevenueSummaryReport, type SendEmailRequest, type SendInvoiceEmailRequest, type SenderAccount, type SenderAccountMarker, type SenderAccountOwnershipRequest, type SenderAccountOwnershipResponse, type SenderAccountRecipient, SenderAccounts, type Service, type ServiceSelector, type ServiceSelectorCondition, Services, ShippingFee, type ShippingFeeBreakdownLine, type ShippingFeeDimensions, type ShippingFeeResponse, type SplitPackageRequest, type SplitPackageResponse, type SplitPart, type SyncCarrierAccountResponse, TMSApiError, TMSClient, type TMSClientConfig, type TMSError, type TMSLanguage, type TopUpWalletRequest, type TrackingRoute, type TriggerCycleRequest, type UnbindCarrierAccountResponse, type UpdateAdditionalServiceRequest, type UpdateBillingProfileRequest, type UpdateBillingRequest, type UpdateInvoiceRequest, type UpdateOrganizationRequest, type UpdateOrganizationUnitRequest, type UpdatePackageRequest, type UpdatePackageResponse, type UpdatePaymentRequest, type UpdateProductCategoryRequest, type UpdateRateCardRequest, type UpdateSenderAccountRecipientRequest, type UpdateSenderAccountRequest, type VerifyBankSlipRequest, type WalletBalance, type WalletTopUpAppResponse, type WalletTopUpQRResponse, type WalletTopUpResponse, type WalletTransaction, type WalletTransactionType, type WalletTransactionsResponse, Wallets, type WaybillAddress, type WaybillBillingRecord, type WaybillDelegation, type WaybillDetails, type WaybillEvents, type WaybillListParams, type WaybillPackage, type WaybillPackageSummary, type WaybillRecipient, type WaybillRoute, type WaybillRouteLeg, type WaybillRouteUnit, type WaybillRouteUnitAddress, type WaybillRouteWithLegs, WaybillRoutes, type WaybillServiceCount, type WaybillServiceCountParams, type WaybillSummary, Waybills, canonicalizeJson, generateKeyedSignature, generateNonce, generateSignature, getTimestamp, verifyWebhookSignature };

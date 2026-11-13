@@ -3,6 +3,7 @@ export { Billings } from './billings';
 export { Invoices } from './invoices';
 export { Payments } from './payments';
 export { RateCards } from './rate-cards';
+export { Services } from './services';
 export { SenderAccounts } from './sender-accounts';
 export { BillingProfiles } from './billing-profiles';
 export { DeliveryEvents } from './delivery-events';

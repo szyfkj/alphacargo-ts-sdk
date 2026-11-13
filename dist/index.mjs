@@ -1349,11 +1349,11 @@ var RateCards = class {
    * List rate cards with optional filters
    *
    * @param params - Query parameters for filtering
-   * @returns Array of rate cards
+   * @returns A page of rate cards (`data`, `total`, `page`, …), newest first
    *
    * @example
    * ```typescript
-   * const rateCards = await client.rateCards.list({
+   * const { data: rateCards } = await client.rateCards.list({
    *   service_id: 'service-uuid'
    * });
    * ```
@@ -1420,6 +1420,30 @@ var RateCards = class {
    */
   async delete(id) {
     await this.http.delete(`/rate-cards/${encodeURIComponent(id)}`);
+  }
+};
+
+// src/resources/services.ts
+var Services = class {
+  constructor(http) {
+    this.http = http;
+  }
+  /**
+   * List the organization's services, by name.
+   *
+   * @example
+   * ```typescript
+   * const services = await client.services.list();
+   * const tiers = services.filter((s) =>
+   *   s.selector?.conditions.some((c) => c.field === 'route_id' && c.value === routeId));
+   * ```
+   */
+  async list(params) {
+    return this.http.get("/services", params);
+  }
+  /** Get one of the organization's services. */
+  async get(id) {
+    return this.http.get(`/services/${encodeURIComponent(id)}`);
   }
 };
 
@@ -2139,11 +2163,11 @@ var WaybillRoutes = class {
    * List waybill routes with optional filters
    *
    * @param params - Query parameters for filtering
-   * @returns Array of waybill routes
+   * @returns A page of waybill routes (`data`, `total`, `page`, …)
    *
    * @example
    * ```typescript
-   * const routes = await client.waybillRoutes.list({ search: 'BKK' });
+   * const { data: routes } = await client.waybillRoutes.list({ search: 'BKK' });
    * ```
    */
   async list(params) {
@@ -2741,6 +2765,7 @@ var TMSClient = class _TMSClient {
     this.reports = new Reports(this.http);
     this.regions = new Regions(this.http);
     this.waybillRoutes = new WaybillRoutes(this.http);
+    this.services = new Services(this.http);
     this.organizations = new Organizations(this.http);
     this.organizationUnits = new OrganizationUnits(this.http);
     this.productCategories = new ProductCategories(this.http);
@@ -2795,6 +2820,7 @@ export {
   Regions,
   Reports,
   SenderAccounts,
+  Services,
   ShippingFee,
   TMSApiError,
   TMSClient,
