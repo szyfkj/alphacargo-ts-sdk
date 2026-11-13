@@ -2259,58 +2259,15 @@ export interface TMSError {
 }
 
 // ============================================================================
-// Carrier Accounts (Agent Workbench)
+// Carriers (Agent Workbench)
 // ============================================================================
 
-/** A carrier an agent can bind an account on. */
+/** A carrier an agent can bind an account on (accounts live in the Agent Workbench). */
 export interface Carrier {
   id: string;
   display_name: string;
   /** The host of the carrier portal the account logs in to. */
   login_host: string;
-}
-
-export type CarrierAccountStatus = 'learning' | 'active' | 'failing';
-
-export interface CarrierAccount {
-  id: string;
-  organization_id: string;
-  carrier_org_id: string;
-  carrier: { display_name: string } | null;
-  name: string;
-  username: string;
-  status: CarrierAccountStatus;
-  sync_interval_minutes: number;
-  next_sync_at: string | null;
-  last_sync_at: string | null;
-  last_sync_result: Record<string, unknown> | null;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface BindCarrierAccountRequest {
-  carrier_org_id: string;
-  /** Unique among the organization's carrier accounts (any case). */
-  name: string;
-  username: string;
-  /** Stored encrypted; never returned. */
-  password: string;
-}
-
-export interface ListCarrierAccountsParams {
-  carrier_org_id?: string;
-}
-
-export interface UnbindCarrierAccountResponse {
-  id: string;
-  /** Packages synced with this account whose tracking was stopped. */
-  tracking_stopped: number;
-}
-
-export interface SyncCarrierAccountResponse {
-  id: string;
-  next_sync_at: string;
 }
 
 // ============================================================================

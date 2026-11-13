@@ -2682,35 +2682,6 @@ var CarrierAccounts = class {
   async listCarriers() {
     return this.http.get("/carriers");
   }
-  /** The organization's carrier accounts. */
-  async list(params) {
-    const query = {};
-    if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
-    return this.http.get("/carrier-accounts", query);
-  }
-  async get(id) {
-    const res = await this.http.get(`/carrier-accounts/${encodeURIComponent(id)}`);
-    return res.data;
-  }
-  /**
-   * Bind an account. The first sync is scheduled right away.
-   * Throws 409 when the organization already has an account with this name,
-   * 503 when credential storage is unavailable.
-   */
-  async bind(request) {
-    const res = await this.http.post("/carrier-accounts", request);
-    return res.data;
-  }
-  /** Unbind: the stored password is destroyed, tracking of its packages stops and the account is removed. */
-  async unbind(id) {
-    const res = await this.http.delete(`/carrier-accounts/${encodeURIComponent(id)}`);
-    return res.data;
-  }
-  /** Sync this account as soon as possible. */
-  async sync(id) {
-    const res = await this.http.post(`/carrier-accounts/${encodeURIComponent(id)}/sync`, {});
-    return res.data;
-  }
 };
 
 // src/client.ts

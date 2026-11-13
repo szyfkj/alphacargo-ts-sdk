@@ -157,14 +157,8 @@ export type {
   ImportSenderAccountsRequest,
   ImportSenderAccountsResponse,
 
-  // Carrier Accounts
+  // Carriers
   Carrier,
-  CarrierAccount,
-  CarrierAccountStatus,
-  BindCarrierAccountRequest,
-  ListCarrierAccountsParams,
-  UnbindCarrierAccountResponse,
-  SyncCarrierAccountResponse,
 
   // Markers (Agent Workbench)
   SenderAccountMarker,
