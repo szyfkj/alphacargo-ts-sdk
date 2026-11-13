@@ -21,7 +21,6 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var index_exports = {};
 __export(index_exports, {
   Address: () => Address,
-  Agent: () => Agent,
   BankAccounts: () => BankAccounts,
   BillingProfiles: () => BillingProfiles,
   Billings: () => Billings,
@@ -1755,8 +1754,8 @@ var SenderAccounts = class {
     return res.data;
   }
   /**
-   * Map a carrier marker to this customer (and address). The carrier's
-   * waybills waiting for it are matched. Throws 409 when the same carrier,
+   * Map a carrier marker to this customer (and address); the Agent
+   * Workbench matches its carrier waybills with it. Throws 409 when the same carrier,
    * code and sub-code are mapped already; 400 when the recipient isn't one of
    * this customer's.
    *
@@ -1777,7 +1776,20 @@ var SenderAccounts = class {
     );
     return res.data;
   }
-  /** Remove a marker mapping; its waybills are matched again without it. */
+  /**
+   * All of the organization's marker mappings, optionally at one carrier:
+   * what the Agent Workbench's carrier sync matches carrier waybills with.
+   *
+   * @example
+   * ```typescript
+   * const mappings = await client.senderAccounts.listAllMarkers({ carrier_org_id: mxId });
+   * ```
+   */
+  async listAllMarkers(params) {
+    const res = await this.http.get("/sender-accounts/markers", params);
+    return res.data;
+  }
+  /** Remove a marker mapping. */
   async removeMarker(senderAccountId, markerId) {
     const res = await this.http.delete(
       `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers/${encodeURIComponent(markerId)}`
@@ -2755,28 +2767,6 @@ var CarrierAccounts = class {
   }
 };
 
-// src/resources/agent.ts
-var Agent = class {
-  constructor(http) {
-    this.http = http;
-  }
-  /**
-   * The unmatched-marker queue, grouped per carrier: codes no mapping covers,
-   * sub-codes of known customers with no address mapped, and irregular markers.
-   *
-   * @example
-   * ```typescript
-   * const { data } = await client.agent.unmatchedMarkers({ status: ['customer_unmatched'] });
-   * ```
-   */
-  async unmatchedMarkers(params) {
-    const query = {};
-    if (params?.status?.length) query.status = params.status.join(",");
-    if (params?.carrier_org_id) query.carrier_org_id = params.carrier_org_id;
-    return this.http.get("/agent/markers/unmatched", query);
-  }
-};
-
 // src/client.ts
 var TMSClient = class _TMSClient {
   /**
@@ -2814,7 +2804,6 @@ var TMSClient = class _TMSClient {
     this.rateCards = new RateCards(this.http);
     this.senderAccounts = new SenderAccounts(this.http);
     this.carrierAccounts = new CarrierAccounts(this.http);
-    this.agent = new Agent(this.http);
     this.billingProfiles = new BillingProfiles(this.http);
     this.deliveryEvents = new DeliveryEvents(this.http);
     this.reports = new Reports(this.http);
@@ -2860,7 +2849,6 @@ var TMSClient = class _TMSClient {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   Address,
-  Agent,
   BankAccounts,
   BillingProfiles,
   Billings,

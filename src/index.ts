@@ -13,7 +13,6 @@ export {
   RateCards,
   SenderAccounts,
   CarrierAccounts,
-  Agent,
   BillingProfiles,
   DeliveryEvents,
   Reports,
@@ -170,14 +169,10 @@ export type {
   // Markers (Agent Workbench)
   SenderAccountMarker,
   AddSenderAccountMarkerRequest,
-  AddSenderAccountMarkerResponse,
   RemoveSenderAccountMarkerResponse,
-  MarkerQueueStatus,
-  MarkerQueueEntry,
+  ListAllMarkersParams,
 
   // Carrier waybills and last mile (Agent Workbench)
-  CarrierMatchStatus,
-  CarrierMarker,
   OrderLastMileRequest,
   LastMileOrder,
 

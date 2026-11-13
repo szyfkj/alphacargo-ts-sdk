@@ -181,11 +181,11 @@ export interface UpdateWaybillRequest {
   requires_signature?: boolean | null;
   sender_account_id?: string | null;
   /**
-   * One of the sender account's saved recipients. On an agent's carrier
-   * waybill the choice survives re-matching its marker. 409 once delivery
-   * was ordered.
+   * One of the sender account's saved recipients (of the sender account this
+   * request sets, if it sets one), or null to clear it. 409 once delivery was
+   * ordered.
    */
-  recipient_id?: string;
+  recipient_id?: string | null;
 }
 
 export interface TrackingRoute {
@@ -349,8 +349,6 @@ export interface WaybillDetails {
   priority?: number;
   recipient?: WaybillRecipient;
   packages?: WaybillPackageSummary[];
-  /** Only on an agent's carrier waybill (Agent Workbench): its marker and how it matched. */
-  carrier_marker?: CarrierMarker;
   sender?: unknown;
   sender_account?: unknown;
   service?: unknown;
@@ -2346,66 +2344,18 @@ export interface AddSenderAccountMarkerRequest {
   recipient_id?: string | null;
 }
 
-export interface RematchSummary {
-  /** Waybills the change could affect. */
-  examined: number;
-  /** Waybills whose match changed. */
-  changed: number;
-}
-
-export interface AddSenderAccountMarkerResponse {
-  marker: SenderAccountMarker;
-  rematched: RematchSummary;
-}
-
 export interface RemoveSenderAccountMarkerResponse {
   id: string;
-  rematched: RematchSummary;
 }
 
-export type MarkerQueueStatus = 'irregular' | 'customer_unmatched' | 'recipient_unmatched';
-
-export interface MarkerQueueEntry {
-  status: MarkerQueueStatus;
-  carrier_org_id: string;
-  /** The code to map (null for irregular). */
-  code: string | null;
-  /** For recipient_unmatched: the sub-code with no address mapped. */
-  sub_code: string | null;
-  /** For irregular: the marker as the carrier shows it. */
-  raw_marker: string | null;
-  /** For recipient_unmatched: the customer the code maps to. */
-  sender_account_id: string | null;
-  waybill_count: number;
-  first_seen_at: string | null;
-  /** Up to five raw markers in the group. */
-  sample_markers: string[];
+export interface ListAllMarkersParams {
+  /** Only the mappings at this carrier. */
+  carrier_org_id?: string;
 }
 
 // ============================================================================
 // Carrier waybills and last mile (Agent Workbench)
 // ============================================================================
-
-export type CarrierMatchStatus = 'no_marker' | 'irregular' | 'customer_unmatched' | 'recipient_unmatched' | 'matched';
-
-/**
- * An agent's carrier waybill's marker (唛头) and its match. The match itself
- * is the waybill's `sender_account_id` / `recipient_id`; the carrier's number
- * is its `external_waybill_no`.
- */
-export interface CarrierMarker {
-  id: string;
-  carrier_org_id: string;
-  marker_raw: string | null;
-  marker_code: string | null;
-  marker_sub_code: string | null;
-  marker_mode: string | null;
-  marker_issues: string[];
-  match_status: CarrierMatchStatus;
-  /** The agent picked the recipient; re-matching keeps it. */
-  recipient_locked: boolean;
-  first_seen_at: string;
-}
 
 export interface OrderLastMileRequest {
   /** A `POST /quotes` quote from the warehouse to the waybill's address. */

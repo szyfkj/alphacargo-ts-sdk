@@ -14,8 +14,8 @@ import type {
   ImportSenderAccountsResponse,
   SenderAccountMarker,
   AddSenderAccountMarkerRequest,
-  AddSenderAccountMarkerResponse,
   RemoveSenderAccountMarkerResponse,
+  ListAllMarkersParams,
 } from '../types';
 
 interface ListSenderAccountsResponse {
@@ -299,8 +299,8 @@ export class SenderAccounts {
   }
 
   /**
-   * Map a carrier marker to this customer (and address). The carrier's
-   * waybills waiting for it are matched. Throws 409 when the same carrier,
+   * Map a carrier marker to this customer (and address); the Agent
+   * Workbench matches its carrier waybills with it. Throws 409 when the same carrier,
    * code and sub-code are mapped already; 400 when the recipient isn't one of
    * this customer's.
    *
@@ -314,15 +314,29 @@ export class SenderAccounts {
    * await client.senderAccounts.addMarker(wangId, { carrier_org_id: cnsId, code: 'aaqom', recipient_id: shopId });
    * ```
    */
-  async addMarker(senderAccountId: string, request: AddSenderAccountMarkerRequest): Promise<AddSenderAccountMarkerResponse> {
-    const res = await this.http.post<{ data: AddSenderAccountMarkerResponse }>(
+  async addMarker(senderAccountId: string, request: AddSenderAccountMarkerRequest): Promise<SenderAccountMarker> {
+    const res = await this.http.post<{ data: SenderAccountMarker }>(
       `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers`,
       request as unknown as Record<string, unknown>
     );
     return res.data;
   }
 
-  /** Remove a marker mapping; its waybills are matched again without it. */
+  /**
+   * All of the organization's marker mappings, optionally at one carrier:
+   * what the Agent Workbench's carrier sync matches carrier waybills with.
+   *
+   * @example
+   * ```typescript
+   * const mappings = await client.senderAccounts.listAllMarkers({ carrier_org_id: mxId });
+   * ```
+   */
+  async listAllMarkers(params?: ListAllMarkersParams): Promise<SenderAccountMarker[]> {
+    const res = await this.http.get<{ data: SenderAccountMarker[] }>('/sender-accounts/markers', params as Record<string, unknown>);
+    return res.data;
+  }
+
+  /** Remove a marker mapping. */
   async removeMarker(senderAccountId: string, markerId: string): Promise<RemoveSenderAccountMarkerResponse> {
     const res = await this.http.delete<{ data: RemoveSenderAccountMarkerResponse }>(
       `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers/${encodeURIComponent(markerId)}`

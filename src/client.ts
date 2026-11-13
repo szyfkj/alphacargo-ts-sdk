@@ -8,7 +8,6 @@ import {
   RateCards,
   SenderAccounts,
   CarrierAccounts,
-  Agent,
   BillingProfiles,
   DeliveryEvents,
   Reports,
@@ -90,11 +89,6 @@ export class TMSClient {
    * Carrier accounts (Agent Workbench): logins on carrier portals
    */
   public readonly carrierAccounts: CarrierAccounts;
-
-  /**
-   * Agent Workbench views (unmatched-marker queue)
-   */
-  public readonly agent: Agent;
 
   /**
    * BillingProfiles resource for managing billing profiles and cycles
@@ -199,7 +193,6 @@ export class TMSClient {
     this.rateCards = new RateCards(this.http);
     this.senderAccounts = new SenderAccounts(this.http);
     this.carrierAccounts = new CarrierAccounts(this.http);
-    this.agent = new Agent(this.http);
     this.billingProfiles = new BillingProfiles(this.http);
     this.deliveryEvents = new DeliveryEvents(this.http);
     this.reports = new Reports(this.http);
