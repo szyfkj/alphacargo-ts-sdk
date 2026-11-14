@@ -485,7 +485,7 @@ var Waybills = class {
    * Order Alpha Cargo's last-mile delivery (FTL, on account) for an agent's
    * carrier waybill, from a quote of the trip: the waybill gets a last-mile
    * leg and the delivery goes to Alpha Cargo's dispatchers. Needs the
-   * `carrier_accounts` plan feature.
+   * `agent_workbench` plan feature.
    *
    * @example
    * ```typescript
