@@ -8,6 +8,7 @@ import type {
   LastMileOrder,
   WaybillEvents,
   GetLabelParams,
+  LabelWithInfo,
   AddPackageRequest,
   AddPackageResponse,
   SplitPackageRequest,
@@ -295,6 +296,28 @@ export class Waybills {
       `/waybills/${encodeURIComponent(waybillNo)}/label`,
       labelQuery(params)
     );
+  }
+
+  /**
+   * `getLabel`, plus the carrier's tracking numbers on the label (the
+   * `X-Sub-Package-No` response header).
+   *
+   * @example
+   * ```typescript
+   * const { file, subPackageNos } = await client.waybills.getLabelWithInfo('TH24020001', { packageId: 'C1A1' });
+   * console.log(subPackageNos); // ['JT0001234567']
+   * ```
+   */
+  async getLabelWithInfo(waybillNo: string, params?: GetLabelParams): Promise<LabelWithInfo> {
+    const { data, headers } = await this.http.getFileAndHeadersWithSignature(
+      `/waybills/${encodeURIComponent(waybillNo)}/label`,
+      labelQuery(params)
+    );
+    const header = headers.get('X-Sub-Package-No');
+    return {
+      file: data,
+      subPackageNos: header ? header.split(',').map((n) => n.trim()).filter(Boolean) : [],
+    };
   }
 
   /**

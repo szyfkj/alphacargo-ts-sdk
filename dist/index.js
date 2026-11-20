@@ -293,6 +293,10 @@ var HttpClient = class {
    * with the HTTP status as `statusCode`.
    */
   async getFileWithSignature(path, params) {
+    return (await this.getFileAndHeadersWithSignature(path, params)).data;
+  }
+  /** `getFileWithSignature`, plus the response's headers. */
+  async getFileAndHeadersWithSignature(path, params) {
     const signedParams = await this.signRequest({ ...params ?? {} });
     const response = await fetch(`${this.baseUrl}${path}${buildQueryString(signedParams)}`, {
       method: "GET",
@@ -316,7 +320,7 @@ var HttpClient = class {
         response.status
       );
     }
-    return response.arrayBuffer();
+    return { data: await response.arrayBuffer(), headers: response.headers };
   }
 };
 
@@ -570,6 +574,27 @@ var Waybills = class {
       `/waybills/${encodeURIComponent(waybillNo)}/label`,
       labelQuery(params)
     );
+  }
+  /**
+   * `getLabel`, plus the carrier's tracking numbers on the label (the
+   * `X-Sub-Package-No` response header).
+   *
+   * @example
+   * ```typescript
+   * const { file, subPackageNos } = await client.waybills.getLabelWithInfo('TH24020001', { packageId: 'C1A1' });
+   * console.log(subPackageNos); // ['JT0001234567']
+   * ```
+   */
+  async getLabelWithInfo(waybillNo, params) {
+    const { data, headers } = await this.http.getFileAndHeadersWithSignature(
+      `/waybills/${encodeURIComponent(waybillNo)}/label`,
+      labelQuery(params)
+    );
+    const header = headers.get("X-Sub-Package-No");
+    return {
+      file: data,
+      subPackageNos: header ? header.split(",").map((n) => n.trim()).filter(Boolean) : []
+    };
   }
   /**
    * Generate a merged PDF with labels for multiple waybills

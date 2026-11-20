@@ -382,6 +382,14 @@ export class HttpClient {
    * with the HTTP status as `statusCode`.
    */
   async getFileWithSignature(path: string, params?: Record<string, string>): Promise<ArrayBuffer> {
+    return (await this.getFileAndHeadersWithSignature(path, params)).data;
+  }
+
+  /** `getFileWithSignature`, plus the response's headers. */
+  async getFileAndHeadersWithSignature(
+    path: string,
+    params?: Record<string, string>
+  ): Promise<{ data: ArrayBuffer; headers: Headers }> {
     const signedParams = await this.signRequest({ ...(params ?? {}) });
     const response = await fetch(`${this.baseUrl}${path}${buildQueryString(signedParams)}`, {
       method: 'GET',
@@ -405,6 +413,6 @@ export class HttpClient {
         response.status
       );
     }
-    return response.arrayBuffer();
+    return { data: await response.arrayBuffer(), headers: response.headers };
   }
 }

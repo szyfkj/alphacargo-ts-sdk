@@ -218,6 +218,18 @@ export interface GetLabelParams {
   width?: number;
 }
 
+/** A label file with the carrier's tracking numbers printed on it. */
+export interface LabelWithInfo {
+  /** The label file: PDF, or PNG with `format: 'png'`. */
+  file: ArrayBuffer;
+  /**
+   * The carrier's tracking numbers (`sub_package_no`) of the labelled packages,
+   * in package order; packages the carrier hasn't numbered are left out, so
+   * this is empty for a label the TMS drew itself.
+   */
+  subPackageNos: string[];
+}
+
 // --- Waybill List / Details ---
 
 export interface WaybillListParams extends PaginationParams {

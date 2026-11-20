@@ -52,6 +52,7 @@ export type {
   LabelFormat,
   LabelSize,
   GetLabelParams,
+  LabelWithInfo,
   AddPackageRequest,
   AddPackageResponse,
   AllocateWaybillNumberResponse,
