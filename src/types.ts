@@ -370,6 +370,9 @@ export interface WaybillDetails {
   tags?: string[];
   notes?: string;
   requires_signature?: boolean;
+  /** When you asked for the parcel back (`waybills.requestReturn`); it is not consolidated or sent out while set. */
+  return_requested_at?: string | null;
+  return_note?: string | null;
   weight?: number;
   volume?: number;
   volumetric_weight?: number;

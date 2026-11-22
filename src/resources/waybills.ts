@@ -185,6 +185,39 @@ export class Waybills {
   }
 
   /**
+   * Ask for a waybill's parcel back: it is returned to the sender instead of
+   * being consolidated or sent onward. For waybills you own.
+   *
+   * Allowed until a consolidated shipment containing the parcel has left the
+   * warehouse; after that the call fails with HTTP 409. Asking again changes
+   * nothing.
+   *
+   * @param waybillNo - Waybill number or external waybill number
+   * @param data - Optional note (reason, or where to send it back to)
+   *
+   * @example
+   * ```typescript
+   * await client.waybills.requestReturn('YT1234567890', { note: 'Order #91002 returned by the customer' });
+   * ```
+   */
+  async requestReturn(
+    waybillNo: string,
+    data: { note?: string } = {},
+  ): Promise<{ waybill_no: string; return_requested_at: string; return_note: string | null }> {
+    return this.http.post(`/waybills/${encodeURIComponent(waybillNo)}/return`, data);
+  }
+
+  /**
+   * Take a return request back: the parcel moves on as usual. Does nothing on a
+   * waybill with no return request.
+   *
+   * @param waybillNo - Waybill number or external waybill number
+   */
+  async withdrawReturn(waybillNo: string): Promise<{ waybill_no: string; return_requested_at: null }> {
+    return this.http.delete(`/waybills/${encodeURIComponent(waybillNo)}/return`);
+  }
+
+  /**
    * Update waybill fields
    *
    * @param waybillNo - Waybill number or external waybill number
