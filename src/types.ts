@@ -186,6 +186,12 @@ export interface UpdateWaybillRequest {
    * ordered.
    */
   recipient_id?: string | null;
+  /** Actual weight, kg. A measurement: re-selects the service and re-prices the billings. */
+  weight?: number;
+  /** Volume, m³ (what `cbm` rate cards bill). A measurement, like `weight`. */
+  volume?: number;
+  /** Volumetric weight, kg. A measurement, like `weight`. */
+  volumetric_weight?: number;
 }
 
 export interface TrackingRoute {
