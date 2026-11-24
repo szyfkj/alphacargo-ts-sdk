@@ -1672,6 +1672,15 @@ export interface CreateDeliveryEventRequest {
   coordinates?: Record<string, unknown>;
   notes?: string;
   photos?: string[];
+  /** Record the event even when a later event already exists. */
+  ignore_conflicts?: boolean;
+  /**
+   * Your organization unit (station / warehouse) where the event happened. It becomes the
+   * event's location and the waybill's latest station. An `in_transit_hub_inbound` at the
+   * end unit of the waybill's route is recorded as `delivered`; anywhere else it stays an
+   * inbound. Must be one of your organization's units (400 otherwise).
+   */
+  organization_unit_id?: string;
 }
 
 /** From `POST /delivery-events/{eventId}/pods/upload-token`. */

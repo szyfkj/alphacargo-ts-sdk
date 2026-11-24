@@ -460,6 +460,14 @@ const event = await client.deliveryEvents.create({
   photos: ['base64-encoded-image...']
 });
 
+// A warehouse inbound, with your unit (station) where it happened: at the end of
+// the waybill's route it is recorded as `delivered`, elsewhere it stays an inbound.
+await client.deliveryEvents.create({
+  waybill_id: 'waybill-uuid',
+  event_type: 'in_transit_hub_inbound',
+  organization_unit_id: 'organization-unit-uuid',
+});
+
 // Upload POD photos
 const blob = new Blob([photoBuffer], { type: 'image/jpeg' });
 await client.deliveryEvents.uploadPods(event.id, [blob]);
