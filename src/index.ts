@@ -170,6 +170,10 @@ export type {
   // Carrier waybills and last mile (Agent Workbench)
   OrderLastMileRequest,
   LastMileOrder,
+  LastMileOrderSummary,
+  LastMileCancellation,
+  CancelLastMileRequest,
+  LastMileCancellationFeeRequest,
 
   // Package Label OCR
   PackageLabelOcrParams,

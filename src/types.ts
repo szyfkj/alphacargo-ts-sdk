@@ -2357,3 +2357,50 @@ export interface LastMileOrder {
   status: string | null;
   leg_waybill_id: string;
 }
+
+/** A cancelled last-mile order's cancellation. */
+export interface LastMileCancellation {
+  canceled_at: string;
+  reason: string | null;
+  /**
+   * `none`: nothing is owed. `pending`: the provider may charge a fee, which
+   * Alpha Cargo dispatch has yet to enter. `entered`: it did (`fee`, possibly 0).
+   */
+  fee_status: 'none' | 'pending' | 'entered';
+  /** 0 when none, null while pending. */
+  fee: number | null;
+  currency: string | null;
+  provider: string | null;
+  /** Lines already invoiced, so not cancelled. */
+  invoiced_billing_ids: string[];
+}
+
+/** One last-mile order of a waybill. */
+export interface LastMileOrderSummary {
+  delivery_id: string;
+  delivery_no: string | null;
+  quotation_id: string | null;
+  leg_waybill_id: string | null;
+  status: string | null;
+  ordered_at: string | null;
+  /** What Alpha Cargo charges: the quote's seller amount. */
+  amount: number | null;
+  currency: string | null;
+  booking: { provider: string | null; status: string | null; driver_assigned: boolean } | null;
+  cancellation: LastMileCancellation | null;
+}
+
+export interface CancelLastMileRequest {
+  /** The order to cancel, by its quote. Default: the waybill's live order. */
+  quotation_id?: string;
+  reason?: string;
+  /** The vehicle was booked outside the TMS (in the provider's app): leave its fee for dispatch to enter. */
+  fee_pending?: boolean;
+}
+
+export interface LastMileCancellationFeeRequest {
+  /** The provider's fee; 0 when it charged none. */
+  amount: number;
+  /** ISO 4217. Default: the cancelled order's currency. */
+  currency?: string;
+}

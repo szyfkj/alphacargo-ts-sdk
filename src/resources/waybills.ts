@@ -6,6 +6,9 @@ import type {
   UpdateWaybillRequest,
   OrderLastMileRequest,
   LastMileOrder,
+  LastMileOrderSummary,
+  CancelLastMileRequest,
+  LastMileCancellationFeeRequest,
   WaybillEvents,
   GetLabelParams,
   LabelWithInfo,
@@ -253,6 +256,55 @@ export class Waybills {
   async orderLastMile(waybillNo: string, request: OrderLastMileRequest): Promise<LastMileOrder> {
     const res = await this.http.post<{ data: LastMileOrder }>(
       `/waybills/${encodeURIComponent(waybillNo)}/last-mile`,
+      request as unknown as Record<string, unknown>
+    );
+    return res.data;
+  }
+
+  /**
+   * The waybill's last-mile orders, newest first, with their booking and,
+   * once cancelled, the cancellation. Needs the `agent_workbench` plan feature.
+   */
+  async listLastMile(waybillNo: string): Promise<LastMileOrderSummary[]> {
+    const res = await this.http.getWithSignature<{ data: LastMileOrderSummary[] }>(
+      `/waybills/${encodeURIComponent(waybillNo)}/last-mile`
+    );
+    return res.data;
+  }
+
+  /**
+   * Cancel a last-mile order: the provider booking, its charges and the
+   * delivery. Idempotent. Throws a 409 when the provider refuses (Lalamove more
+   * than 5 minutes after the driver match) or the goods were picked up. When
+   * `cancellation.fee_status` is `pending`, the provider may charge a fee:
+   * Alpha Cargo dispatch enters it with `enterLastMileCancellationFee`.
+   *
+   * @example
+   * ```typescript
+   * const order = await client.waybills.cancelLastMile('MX0001', { quotation_id });
+   * if (order.cancellation?.fee_status === 'none') refundInFull(order);
+   * ```
+   */
+  async cancelLastMile(waybillNo: string, request: CancelLastMileRequest = {}): Promise<LastMileOrderSummary> {
+    const res = await this.http.post<{ data: LastMileOrderSummary }>(
+      `/waybills/${encodeURIComponent(waybillNo)}/last-mile/cancel`,
+      request as unknown as Record<string, unknown>
+    );
+    return res.data;
+  }
+
+  /**
+   * Enter the provider's fee for a cancelled last-mile order whose fee is
+   * pending (0 when none). Called by Alpha Cargo dispatch, with the key of an
+   * organization running the delivery (not the agent's). The fee is billed
+   * down the chain to the agent.
+   */
+  async enterLastMileCancellationFee(
+    deliveryId: string,
+    request: LastMileCancellationFeeRequest
+  ): Promise<LastMileOrderSummary> {
+    const res = await this.http.post<{ data: LastMileOrderSummary }>(
+      `/deliveries/${encodeURIComponent(deliveryId)}/cancellation-fee`,
       request as unknown as Record<string, unknown>
     );
     return res.data;
