@@ -1510,6 +1510,40 @@ var Payments = class {
     );
     return res.data;
   }
+  /**
+   * Record money you have already received from your customer: a WeChat or
+   * Alipay transfer, a QR code, cash. The payment is completed at once and
+   * settles the invoices you name, or else the customer's oldest open invoices
+   * in its currency; anything left over is the customer's credit
+   * (`senderAccounts.applyCredit`). Attach the screenshot with `attachSlip`.
+   *
+   * A transaction number recorded before fails with 409 `duplicate_txn`; the
+   * error's body names the earlier `payment_id`.
+   *
+   * @example
+   * ```typescript
+   * const paid = await client.payments.recordReceived({
+   *   sender_account_id: customerId, amount: 1200, currency: 'CNY',
+   *   payment_method: 'wechat', payment_date: '2026-11-26', external_txn_id: '1000039...',
+   * });
+   * ```
+   */
+  async recordReceived(data) {
+    const res = await this.http.post("/payments", { ...data, received: true });
+    return res.data;
+  }
+  /**
+   * Attach the evidence of a payment you recorded (`recordReceived`): the
+   * screenshot as base64, or the key of an object uploaded with
+   * `slipUploadToken`. It is stored verified; the payment stays completed.
+   */
+  async attachSlip(id, data) {
+    return this.http.post(`/payments/${encodeURIComponent(id)}/slip`, data);
+  }
+  /** A short-lived credential to upload the payment's slip straight to OSS, or `{ mode: 'server' }`. */
+  async slipUploadToken(id) {
+    return this.http.post(`/payments/${encodeURIComponent(id)}/slip/upload-token`, {});
+  }
 };
 
 // src/resources/rate-cards.ts
@@ -1938,6 +1972,32 @@ var SenderAccounts = class {
     const res = await this.http.delete(
       `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers/${encodeURIComponent(markerId)}`
     );
+    return res.data;
+  }
+  /**
+   * What one customer owes you, per currency (never summed across currencies):
+   * open and overdue totals, aging (0–30 / 31–60 / 60+ days past due, in your
+   * organization's time zone), credit, unbilled lines, open invoices and the
+   * last payment.
+   */
+  async receivables(id) {
+    const res = await this.http.get(`/sender-accounts/${encodeURIComponent(id)}/receivables`);
+    return res.data;
+  }
+  /**
+   * Customers who owe you, have credit or unbilled lines, a page at a time:
+   * by what is overdue in `currency` when given, else oldest unpaid first.
+   */
+  async listReceivables(params) {
+    return this.http.get("/receivables", params);
+  }
+  /**
+   * Put the customer's credit (recorded payments not fully allocated) on its
+   * open invoices, oldest first, per currency. Call it after issuing a
+   * statement to a customer with credit.
+   */
+  async applyCredit(id) {
+    const res = await this.http.post(`/sender-accounts/${encodeURIComponent(id)}/apply-credit`, {});
     return res.data;
   }
 };
@@ -2654,6 +2714,21 @@ var BankAccounts = class {
     return this.http.get(
       `/bank-accounts/availability?${query.toString()}`
     );
+  }
+  /** Your receiving accounts, every field, with this month's usage against each cap. */
+  async listManaged() {
+    return this.http.get("/bank-accounts");
+  }
+  /** Add a receiving account: a bank account, or a WeChat, Alipay or local QR code (`qr_image_url`). */
+  async create(data) {
+    return this.http.post("/bank-accounts", data);
+  }
+  async update(id, data) {
+    return this.http.patch(`/bank-accounts/${encodeURIComponent(id)}`, data);
+  }
+  /** Refused (409) once the account has received a transfer: deactivate it instead (`is_active: false`). */
+  async remove(id) {
+    return this.http.delete(`/bank-accounts/${encodeURIComponent(id)}`);
   }
 };
 

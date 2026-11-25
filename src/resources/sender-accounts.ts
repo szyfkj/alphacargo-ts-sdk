@@ -1,5 +1,9 @@
 import { HttpClient } from '../utils';
 import type {
+  SenderAccountReceivables,
+  ListReceivablesParams,
+  ListReceivablesResponse,
+  AppliedCredit,
   SenderAccount,
   CreateSenderAccountRequest,
   UpdateSenderAccountRequest,
@@ -341,6 +345,35 @@ export class SenderAccounts {
     const res = await this.http.delete<{ data: RemoveSenderAccountMarkerResponse }>(
       `/sender-accounts/${encodeURIComponent(senderAccountId)}/markers/${encodeURIComponent(markerId)}`
     );
+    return res.data;
+  }
+
+  /**
+   * What one customer owes you, per currency (never summed across currencies):
+   * open and overdue totals, aging (0–30 / 31–60 / 60+ days past due, in your
+   * organization's time zone), credit, unbilled lines, open invoices and the
+   * last payment.
+   */
+  async receivables(id: string): Promise<SenderAccountReceivables> {
+    const res = await this.http.get<{ data: SenderAccountReceivables }>(`/sender-accounts/${encodeURIComponent(id)}/receivables`);
+    return res.data;
+  }
+
+  /**
+   * Customers who owe you, have credit or unbilled lines, a page at a time:
+   * by what is overdue in `currency` when given, else oldest unpaid first.
+   */
+  async listReceivables(params?: ListReceivablesParams): Promise<ListReceivablesResponse> {
+    return this.http.get<ListReceivablesResponse>('/receivables', params as Record<string, unknown> | undefined);
+  }
+
+  /**
+   * Put the customer's credit (recorded payments not fully allocated) on its
+   * open invoices, oldest first, per currency. Call it after issuing a
+   * statement to a customer with credit.
+   */
+  async applyCredit(id: string): Promise<AppliedCredit> {
+    const res = await this.http.post<{ data: AppliedCredit }>(`/sender-accounts/${encodeURIComponent(id)}/apply-credit`, {});
     return res.data;
   }
 }

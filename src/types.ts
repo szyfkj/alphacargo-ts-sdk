@@ -719,6 +719,13 @@ export interface InvoiceLineItem {
   unit_price: number;
   amount: number;
   waybill_no?: string;
+  /** The line's currency (the invoice's). */
+  currency?: string;
+  created_at?: string;
+  pricing_source?: 'rate_card' | 'quote' | 'manual';
+  /** The waybill the line bills: its number, the carrier's number and its weight (kg). */
+  waybill?: { id: string; waybill_no: string; external_waybill_no: string | null; weight: number | null } | null;
+  delivery?: { id: string; delivery_no: string | null } | null;
 }
 
 export interface Invoice {
@@ -853,8 +860,11 @@ export type PaymentStatus =
   | 'refunded'
   | 'canceled';
 export type PaymentMethod = 'bank_transfer' | 'flashpay' | 'wallet';
+
+/** How a payment the payee records arrived: channels that send no callback. */
+export type ReceivedPaymentMethod = 'wechat' | 'alipay' | 'local_qr' | 'bank_transfer' | 'cash' | 'other';
 /** A stored payment's method: `prepaid_balance` is recorded only by `payments.recordPrepaidForDelivery`. */
-export type StoredPaymentMethod = PaymentMethod | 'prepaid_balance';
+export type StoredPaymentMethod = PaymentMethod | 'prepaid_balance' | ReceivedPaymentMethod;
 
 export interface PaymentAllocation {
   id: string;
@@ -868,8 +878,17 @@ export interface PaymentAllocation {
 export interface Payment {
   id: string;
   amount: number;
+  currency?: string;
   payment_method: StoredPaymentMethod;
   payment_date: string;
+  /** The channel's transaction number, when recorded. */
+  external_txn_id?: string | null;
+  /** The payer as the evidence names them (a recorded payment). */
+  payer_name?: string | null;
+  /** Your receiving account the money arrived in (a recorded payment). */
+  receiving_account_id?: string | null;
+  /** The slip or screenshot on it, if any (list and detail). */
+  bank_slip?: { id: string; verified: boolean | null } | null;
   reference_no?: string;
   status: PaymentStatus;
   notes?: string;
@@ -905,6 +924,8 @@ export interface ListPaymentsParams extends PaginationParams {
   invoice_id?: string;
   status?: PaymentStatus;
   payment_method?: StoredPaymentMethod;
+  /** The channel's transaction number, exact: was it recorded already? */
+  external_txn_id?: string;
   from_date?: string;
   to_date?: string;
 }
@@ -945,6 +966,21 @@ export interface CreateBankSlipRequest {
   transfer_reference?: string;
 }
 
+/**
+ * Evidence for a payment you recorded as received (`payments.recordReceived`):
+ * the screenshot itself (base64, at most 5 MB; it is stored on the TMS's OSS),
+ * or the `key` of an object uploaded with `payments.slipUploadToken`. The
+ * payment's channel, date and amount stand in for the payer's bank details.
+ */
+export type AttachSlipRequest =
+  | { file_base64: string; content_type: 'image/jpeg' | 'image/png' | 'image/webp'; file_name?: string; transfer_reference?: string }
+  | { key: string; transfer_reference?: string };
+
+/** `payments.slipUploadToken`: an STS credential for OSS, or `{ mode: 'server' }` (send the file as `file_base64`). */
+export type SlipUploadToken =
+  | { mode: 'server' }
+  | { mode: 'oss'; region: string; bucket: string; endpoint: string; prefix: string; accessKeyId: string; accessKeySecret: string; securityToken: string; expiration: string };
+
 export interface VerifyBankSlipRequest {
   verified: boolean;
   verification_notes?: string;
@@ -959,15 +995,160 @@ export interface VerifyBankSlipRequest {
  * account's monthly cap, its notes and its statement mapping are internal and
  * never cross this boundary.
  */
+/** Where money is received: a bank account, or a WeChat, Alipay or local QR code. */
+export type ReceivingChannel = 'bank' | 'wechat' | 'alipay' | 'local_qr';
+
 export interface PublicBankAccount {
-  bank_name: string;
+  channel: ReceivingChannel;
+  /** For a local QR code: promptpay, duitnow, qris, vietqr… */
+  qr_scheme: string | null;
+  bank_name: string | null;
   bank_code: string | null;
-  account_number: string;
+  account_number: string | null;
   account_name: string;
   branch: string | null;
   currency: string;
   qr_image_url: string | null;
   instructions: string | null;
+}
+
+/** A receiving account as its owner manages it (`bankAccounts.listManaged`). */
+export interface ManagedBankAccount extends PublicBankAccount {
+  id: string;
+  /** Your own name for it; never shown to a payer. */
+  label: string;
+  priority: number;
+  /** Monthly receiving cap in the account's currency; null = none. */
+  cap_amount: number | null;
+  cap_timezone: string;
+  auto_confirm_exact: boolean;
+  is_active: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreateBankAccountRequest {
+  label: string;
+  /** Default `bank`. A bank account needs bank_name and account_number; a local QR its qr_scheme. */
+  channel?: ReceivingChannel;
+  qr_scheme?: string | null;
+  bank_name?: string | null;
+  bank_code?: string | null;
+  account_number?: string | null;
+  account_name: string;
+  branch?: string | null;
+  currency?: string;
+  qr_image_url?: string | null;
+  instructions?: string | null;
+  priority?: number;
+  cap_amount?: number | null;
+  cap_timezone?: string;
+  auto_confirm_exact?: boolean;
+  is_active?: boolean;
+  notes?: string | null;
+}
+
+export type UpdateBankAccountRequest = Partial<CreateBankAccountRequest>;
+
+/** POST /api/payments with `received: true`: money you have already received from your customer. */
+export interface RecordReceivedPaymentRequest {
+  sender_account_id: string;
+  amount: number;
+  currency: string;
+  payment_method: ReceivedPaymentMethod;
+  /** YYYY-MM-DD */
+  payment_date: string;
+  /** The channel's transaction number (a WeChat 转账单号, a bank reference): recording it twice is refused (409 `duplicate_txn`). */
+  external_txn_id?: string;
+  /** Your receiving account the money arrived in. */
+  receiving_account_id?: string;
+  /** The payer as the evidence names them. */
+  payer_name?: string;
+  notes?: string;
+  /** Omit to settle the customer's oldest open invoices in this currency first. */
+  allocations?: Array<{ invoice_id: string; amount: number }>;
+}
+
+export interface ReceivedPayment {
+  payment_id: string;
+  status: 'completed';
+  amount: number;
+  currency: string;
+  payment_method: ReceivedPaymentMethod;
+  external_txn_id: string | null;
+  allocations: Array<{ invoice_id: string; invoice_no: string; amount: number }>;
+  /** Left over: the customer's credit, which `senderAccounts.applyCredit` puts on later invoices. */
+  unallocated: number;
+}
+
+/** One currency of what a customer owes. Amounts are never summed across currencies. */
+export interface ReceivablesBalance {
+  currency: string;
+  /** Unpaid on issued invoices. */
+  open_total: number;
+  /** Of that, past its due date (the issue date when there is none). */
+  overdue_total: number;
+  /** Received and not yet allocated to an invoice. */
+  credit: number;
+  /** Billed lines not on an invoice yet. */
+  unbilled_total: number;
+}
+
+export interface SenderAccountReceivables {
+  sender_account_id: string;
+  name: string;
+  sender_code: string | null;
+  balances: Array<ReceivablesBalance & {
+    /** By days past due, in your organization's time zone; not yet due counts as 0–30. */
+    aging: { d0_30: number; d31_60: number; d60_plus: number };
+    oldest_unpaid_date: string | null;
+  }>;
+  open_invoices: Array<{
+    id: string;
+    invoice_no: string;
+    status: InvoiceStatus;
+    currency: string;
+    total_amount: number;
+    paid_amount: number;
+    balance: number;
+    issue_date: string | null;
+    due_date: string | null;
+    period_start: string;
+    period_end: string;
+  }>;
+  unbilled: Array<{ id: string; waybill_id: string | null; waybill_no: string | null; delivery_id: string | null; name: string | null; amount: number; currency: string; created_at: string | null }>;
+  last_payment: { id: string; amount: number; currency: string; payment_method: StoredPaymentMethod; payment_date: string } | null;
+}
+
+export interface ReceivablesSummary {
+  sender_account_id: string;
+  name: string;
+  sender_code: string | null;
+  balances: ReceivablesBalance[];
+  oldest_unpaid_date: string | null;
+  last_payment_date: string | null;
+}
+
+export interface ListReceivablesParams {
+  /** Only customers with a balance in this currency, sorted by what is overdue in it. Without it: oldest unpaid first. */
+  currency?: string;
+  /** Name or code. */
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ListReceivablesResponse {
+  data: ReceivablesSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface AppliedCredit {
+  applied: Array<{ payment_id: string; invoice_id: string; amount: number }>;
+  credit_left: Array<{ currency: string; amount: number }>;
 }
 
 /** Where to send a bank transfer, and the reference that identifies it. */

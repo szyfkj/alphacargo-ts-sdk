@@ -1,14 +1,14 @@
 import { HttpClient } from '../utils';
-import type { PublicBankAccount, BankAccountAvailability } from '../types';
+import type { PublicBankAccount, BankAccountAvailability, ManagedBankAccount, CreateBankAccountRequest, UpdateBankAccountRequest } from '../types';
 
 /**
  * Receiving bank accounts — where an organization's customers send money for
  * the `bank_transfer` payment method.
  *
- * Read-only over the SDK, and only the payer-safe projection. Managing accounts
- * (caps, priority, statement mappings) is an operator surface in the TMS app,
- * because those settings decide how inbound volume is spread and are not the
- * business of an API client.
+ * `list` is the payer-safe projection. The account's owner manages its own
+ * accounts with `listManaged`, `create`, `update` and `remove` (an Agent
+ * Workbench agent's 收款方式): a bank account, or a WeChat, Alipay or local QR
+ * code (`channel`). Only a bank account takes a payer's bank transfer.
  *
  * Not to be confused with a bank slip, which is the PAYER's evidence of having
  * sent money and describes THEIR account.
@@ -64,5 +64,24 @@ export class BankAccounts {
     return this.http.get<BankAccountAvailability>(
       `/bank-accounts/availability?${query.toString()}`,
     );
+  }
+
+  /** Your receiving accounts, every field, with this month's usage against each cap. */
+  async listManaged(): Promise<ManagedBankAccount[]> {
+    return this.http.get<ManagedBankAccount[]>('/bank-accounts');
+  }
+
+  /** Add a receiving account: a bank account, or a WeChat, Alipay or local QR code (`qr_image_url`). */
+  async create(data: CreateBankAccountRequest): Promise<{ id: string }> {
+    return this.http.post<{ id: string }>('/bank-accounts', data as unknown as Record<string, unknown>);
+  }
+
+  async update(id: string, data: UpdateBankAccountRequest): Promise<{ success: boolean }> {
+    return this.http.patch<{ success: boolean }>(`/bank-accounts/${encodeURIComponent(id)}`, data as unknown as Record<string, unknown>);
+  }
+
+  /** Refused (409) once the account has received a transfer: deactivate it instead (`is_active: false`). */
+  async remove(id: string): Promise<{ success: boolean }> {
+    return this.http.delete<{ success: boolean }>(`/bank-accounts/${encodeURIComponent(id)}`);
   }
 }

@@ -2,6 +2,10 @@ import { HttpClient } from '../utils';
 import type {
   Payment,
   PrepaidPayment,
+  RecordReceivedPaymentRequest,
+  ReceivedPayment,
+  AttachSlipRequest,
+  SlipUploadToken,
   RecordPrepaidPaymentRequest,
   PaymentAllocation,
   CreatePaymentRequest,
@@ -319,5 +323,42 @@ export class Payments {
       data as unknown as Record<string, unknown>,
     );
     return res.data;
+  }
+
+  /**
+   * Record money you have already received from your customer: a WeChat or
+   * Alipay transfer, a QR code, cash. The payment is completed at once and
+   * settles the invoices you name, or else the customer's oldest open invoices
+   * in its currency; anything left over is the customer's credit
+   * (`senderAccounts.applyCredit`). Attach the screenshot with `attachSlip`.
+   *
+   * A transaction number recorded before fails with 409 `duplicate_txn`; the
+   * error's body names the earlier `payment_id`.
+   *
+   * @example
+   * ```typescript
+   * const paid = await client.payments.recordReceived({
+   *   sender_account_id: customerId, amount: 1200, currency: 'CNY',
+   *   payment_method: 'wechat', payment_date: '2026-11-26', external_txn_id: '1000039...',
+   * });
+   * ```
+   */
+  async recordReceived(data: RecordReceivedPaymentRequest): Promise<ReceivedPayment> {
+    const res = await this.http.post<{ data: ReceivedPayment }>('/payments', { ...data, received: true } as unknown as Record<string, unknown>);
+    return res.data;
+  }
+
+  /**
+   * Attach the evidence of a payment you recorded (`recordReceived`): the
+   * screenshot as base64, or the key of an object uploaded with
+   * `slipUploadToken`. It is stored verified; the payment stays completed.
+   */
+  async attachSlip(id: string, data: AttachSlipRequest): Promise<{ id: string }> {
+    return this.http.post<{ id: string }>(`/payments/${encodeURIComponent(id)}/slip`, data as unknown as Record<string, unknown>);
+  }
+
+  /** A short-lived credential to upload the payment's slip straight to OSS, or `{ mode: 'server' }`. */
+  async slipUploadToken(id: string): Promise<SlipUploadToken> {
+    return this.http.post<SlipUploadToken>(`/payments/${encodeURIComponent(id)}/slip/upload-token`, {});
   }
 }
