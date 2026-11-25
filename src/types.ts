@@ -2183,6 +2183,27 @@ export type VoidQuoteResult =
   | { status: 'voided' }
   | { status: 'accepted'; delivery_id: string; delivery_no: string; leg_waybill_id: string | null };
 
+/** A seller an FTL service resells, with the organization's markup over the seller's price. */
+export interface SellerBinding {
+  id: string;
+  service_id: string;
+  seller_organization_id: string;
+  seller_name: string | null;
+  seller_service_id: string;
+  seller_service_name: string | null;
+  /** A fraction of the seller's price: 0.1 is 10 %. */
+  markup_rate: number;
+  /** Added after the rate, in the quote's currency. */
+  markup_fixed: number;
+  is_active: boolean;
+}
+
+/** Give either or both. `markup_rate` is 0–1. */
+export interface UpdateSellerMarkupRequest {
+  markup_rate?: number;
+  markup_fixed?: number;
+}
+
 // ============================================================================
 // Shipping Fee Types
 // ============================================================================

@@ -1563,6 +1563,32 @@ var Services = class {
   async get(id) {
     return this.http.get(`/services/${encodeURIComponent(id)}`);
   }
+  /**
+   * The sellers one of the organization's FTL services resells, each with the
+   * organization's markup over that seller's price. No seller price is returned.
+   */
+  async listSellers(serviceId) {
+    const res = await this.http.get(`/services/${encodeURIComponent(serviceId)}/sellers`);
+    return res.data;
+  }
+  /**
+   * Set the organization's markup over one seller of its FTL service. Quotes
+   * from then on price `seller price × (1 + markup_rate) + markup_fixed`: an
+   * Agent Workbench agent's last-mile markup, passed on to its customer.
+   *
+   * @example
+   * ```typescript
+   * const [binding] = await client.services.listSellers(serviceId);
+   * await client.services.updateSellerMarkup(serviceId, binding.id, { markup_rate: 0.1, markup_fixed: 50 });
+   * ```
+   */
+  async updateSellerMarkup(serviceId, bindingId, data) {
+    const res = await this.http.patch(
+      `/services/${encodeURIComponent(serviceId)}/sellers/${encodeURIComponent(bindingId)}`,
+      data
+    );
+    return res.data;
+  }
 };
 
 // src/resources/sender-accounts.ts

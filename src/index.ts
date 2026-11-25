@@ -271,6 +271,8 @@ export type {
   CreateQuoteRequest,
   CreateQuoteResponse,
   VoidQuoteResult,
+  SellerBinding,
+  UpdateSellerMarkupRequest,
   StoredPaymentMethod,
   RecordPrepaidPaymentRequest,
   PrepaidPayment,
