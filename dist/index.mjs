@@ -581,10 +581,14 @@ var Waybills = class {
    * const png = await client.waybills.getLabel('TH24020001', { format: 'png', width: 384 });
    * ```
    *
-   * Without `packageId`, the carrier labels of all packages come merged into
-   * one PDF (with `format: 'png'`, stacked top to bottom in one PNG). A package the carrier hasn't booked yet (e.g. just added to a
-   * draft consolidated waybill) throws TMSApiError with `statusCode` 409:
-   * retry after a few seconds.
+   * A waybill handed to a carrier that provides its labels (e.g. the one that
+   * books J&T) gets that carrier's label, draft or not; any other waybill,
+   * drafts included, gets the label template that applies (a draft prints the
+   * package count as `1 / N`). Without `packageId`, the carrier labels of all
+   * packages come merged into one PDF (with `format: 'png'`, stacked top to
+   * bottom in one PNG). While that carrier hasn't stored a package's label yet
+   * (e.g. just added to a draft consolidated waybill), this throws TMSApiError
+   * with `statusCode` 409: retry after a few seconds.
    */
   async getLabel(waybillNo, params) {
     return this.http.getFileWithSignature(
