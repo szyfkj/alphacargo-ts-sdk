@@ -1146,6 +1146,27 @@ export interface ListReceivablesResponse {
   pageSize: number;
 }
 
+/** One currency's receivables across every customer (GET /receivables/aging). */
+export interface ReceivablesAgingCurrency {
+  currency: string;
+  open_total: number;
+  overdue_total: number;
+  /** By days past the due date; not yet due counts as 0–30. */
+  aging: { d0_30: number; d31_60: number; d60_plus: number };
+  credit: number;
+  unbilled_total: number;
+  customers_owing: number;
+  customers_overdue: number;
+  oldest_unpaid_date: string | null;
+}
+
+export interface ReceivablesAging {
+  /** The organization's date the amounts were computed for. */
+  today: string;
+  /** One entry per currency; amounts are never summed across currencies. */
+  currencies: ReceivablesAgingCurrency[];
+}
+
 export interface AppliedCredit {
   applied: Array<{ payment_id: string; invoice_id: string; amount: number }>;
   credit_left: Array<{ currency: string; amount: number }>;

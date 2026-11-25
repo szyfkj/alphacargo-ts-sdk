@@ -1938,6 +1938,14 @@ var SenderAccounts = class {
     return this.http.get("/receivables", params);
   }
   /**
+   * What all your customers owe, per currency: open, overdue, aging buckets,
+   * credit, unbilled, and how many customers owe and are overdue.
+   */
+  async receivablesAging() {
+    const res = await this.http.get("/receivables/aging");
+    return res.data;
+  }
+  /**
    * Put the customer's credit (recorded payments not fully allocated) on its
    * open invoices, oldest first, per currency. Call it after issuing a
    * statement to a customer with credit.

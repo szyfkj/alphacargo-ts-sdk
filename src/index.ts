@@ -279,6 +279,8 @@ export type {
   ReceivablesBalance,
   SenderAccountReceivables,
   ReceivablesSummary,
+  ReceivablesAging,
+  ReceivablesAgingCurrency,
   ListReceivablesParams,
   ListReceivablesResponse,
   AppliedCredit,

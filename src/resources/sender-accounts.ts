@@ -3,6 +3,7 @@ import type {
   SenderAccountReceivables,
   ListReceivablesParams,
   ListReceivablesResponse,
+  ReceivablesAging,
   AppliedCredit,
   SenderAccount,
   CreateSenderAccountRequest,
@@ -365,6 +366,15 @@ export class SenderAccounts {
    */
   async listReceivables(params?: ListReceivablesParams): Promise<ListReceivablesResponse> {
     return this.http.get<ListReceivablesResponse>('/receivables', params as Record<string, unknown> | undefined);
+  }
+
+  /**
+   * What all your customers owe, per currency: open, overdue, aging buckets,
+   * credit, unbilled, and how many customers owe and are overdue.
+   */
+  async receivablesAging(): Promise<ReceivablesAging> {
+    const res = await this.http.get<{ data: ReceivablesAging }>('/receivables/aging');
+    return res.data;
   }
 
   /**
