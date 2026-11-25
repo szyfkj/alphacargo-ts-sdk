@@ -270,6 +270,10 @@ export type {
   QuoteBreakdownLine,
   CreateQuoteRequest,
   CreateQuoteResponse,
+  VoidQuoteResult,
+  StoredPaymentMethod,
+  RecordPrepaidPaymentRequest,
+  PrepaidPayment,
 
   // Shipping Fee
   ShippingFeeDimensions,

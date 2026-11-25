@@ -1434,6 +1434,24 @@ var Payments = class {
       params
     );
   }
+  /**
+   * Record that your open lines on a delivery were paid from a balance kept in
+   * another system (`payment_method = 'prepaid_balance'`). The TMS invoices
+   * those lines and settles the invoice with a completed payment.
+   *
+   * Idempotent on `external_txn_id`: a repeat returns the payment already
+   * recorded (`replayed: true`). Fails with 409 `amount_mismatch` when
+   * `amount` is not the open total, and 404 when you have no open line there.
+   *
+   * @param deliveryId - The delivery (for a last-mile order, its `delivery_id`)
+   */
+  async recordPrepaidForDelivery(deliveryId, data) {
+    const res = await this.http.post(
+      `/deliveries/${encodeURIComponent(deliveryId)}/prepaid-payments`,
+      data
+    );
+    return res.data;
+  }
 };
 
 // src/resources/rate-cards.ts
@@ -2685,6 +2703,21 @@ var Quotes = class {
       data,
       options?.senderAccountId ? { "X-Sender-Account-Id": options.senderAccountId } : void 0
     );
+  }
+  /**
+   * Void a quote of your organization so that it can no longer be ordered,
+   * or learn the order already made from it.
+   *
+   * The check and the void happen under the same claim as ordering, so a slow
+   * order still in flight either commits first (the answer is `accepted`) or
+   * is refused afterwards. While an order holds the quote the call fails with
+   * 409 `in_progress`: try again later.
+   *
+   * @param quotationId - The quote's id
+   */
+  async void(quotationId) {
+    const res = await this.http.post(`/quotes/${encodeURIComponent(quotationId)}/void`, {});
+    return res.data;
   }
 };
 

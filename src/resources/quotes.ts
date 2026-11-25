@@ -1,5 +1,5 @@
 import { HttpClient } from '../utils';
-import type { CreateQuoteRequest, CreateQuoteResponse } from '../types';
+import type { CreateQuoteRequest, CreateQuoteResponse, VoidQuoteResult } from '../types';
 
 /**
  * Quotes resource for the FTL/LTL shipping-quote flow.
@@ -62,5 +62,21 @@ export class Quotes {
       data as unknown as Record<string, unknown>,
       options?.senderAccountId ? { 'X-Sender-Account-Id': options.senderAccountId } : undefined,
     );
+  }
+
+  /**
+   * Void a quote of your organization so that it can no longer be ordered,
+   * or learn the order already made from it.
+   *
+   * The check and the void happen under the same claim as ordering, so a slow
+   * order still in flight either commits first (the answer is `accepted`) or
+   * is refused afterwards. While an order holds the quote the call fails with
+   * 409 `in_progress`: try again later.
+   *
+   * @param quotationId - The quote's id
+   */
+  async void(quotationId: string): Promise<VoidQuoteResult> {
+    const res = await this.http.post<{ data: VoidQuoteResult }>(`/quotes/${encodeURIComponent(quotationId)}/void`, {});
+    return res.data;
   }
 }

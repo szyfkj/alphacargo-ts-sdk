@@ -1,6 +1,8 @@
 import { HttpClient } from '../utils';
 import type {
   Payment,
+  PrepaidPayment,
+  RecordPrepaidPaymentRequest,
   PaymentAllocation,
   CreatePaymentRequest,
   UpdatePaymentRequest,
@@ -298,5 +300,24 @@ export class Payments {
       '/payment-methods',
       params as Record<string, unknown> | undefined
     );
+  }
+
+  /**
+   * Record that your open lines on a delivery were paid from a balance kept in
+   * another system (`payment_method = 'prepaid_balance'`). The TMS invoices
+   * those lines and settles the invoice with a completed payment.
+   *
+   * Idempotent on `external_txn_id`: a repeat returns the payment already
+   * recorded (`replayed: true`). Fails with 409 `amount_mismatch` when
+   * `amount` is not the open total, and 404 when you have no open line there.
+   *
+   * @param deliveryId - The delivery (for a last-mile order, its `delivery_id`)
+   */
+  async recordPrepaidForDelivery(deliveryId: string, data: RecordPrepaidPaymentRequest): Promise<PrepaidPayment> {
+    const res = await this.http.post<{ data: PrepaidPayment }>(
+      `/deliveries/${encodeURIComponent(deliveryId)}/prepaid-payments`,
+      data as unknown as Record<string, unknown>,
+    );
+    return res.data;
   }
 }

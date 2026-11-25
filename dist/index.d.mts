@@ -786,6 +786,8 @@ type SendEmailRequest = SendInvoiceEmailRequest;
  */
 type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded' | 'canceled';
 type PaymentMethod = 'bank_transfer' | 'flashpay' | 'wallet';
+/** A stored payment's method: `prepaid_balance` is recorded only by `payments.recordPrepaidForDelivery`. */
+type StoredPaymentMethod = PaymentMethod | 'prepaid_balance';
 interface PaymentAllocation {
     id: string;
     payment_id?: string;
@@ -797,7 +799,7 @@ interface PaymentAllocation {
 interface Payment {
     id: string;
     amount: number;
-    payment_method: PaymentMethod;
+    payment_method: StoredPaymentMethod;
     payment_date: string;
     reference_no?: string;
     status: PaymentStatus;
@@ -833,7 +835,7 @@ interface ListPaymentsParams extends PaginationParams {
     sender_account_id?: string;
     invoice_id?: string;
     status?: PaymentStatus;
-    payment_method?: PaymentMethod;
+    payment_method?: StoredPaymentMethod;
     from_date?: string;
     to_date?: string;
 }
@@ -1845,6 +1847,12 @@ interface CreateQuoteRequest {
     }[];
     /** Price only these of your services (and the sellers bound to them). */
     service_ids?: string[];
+    /**
+     * Return `cost` (what your organization pays the winning seller). Ignored
+     * when the call names a sender account. Don't set it when the answer is
+     * shown to a customer.
+     */
+    include_cost?: boolean;
 }
 /** One line of a quotation's price breakdown (base fare plus any add-ons). */
 type QuoteBreakdownLine = {
@@ -1884,7 +1892,31 @@ interface CreateQuoteResponse {
     expires_at: string;
     /** Price breakdown: the base fare followed by any add-on lines. */
     breakdown: QuoteBreakdownLine[];
+    /**
+     * What your organization pays the seller whose service won the quote (an
+     * Alpha Cargo last-mile service bound to yours), or null when no seller won.
+     * Present only when the request set `include_cost`, with the organization's
+     * own key; never when the call names a sender account
+     * (`X-Sender-Account-Id`).
+     */
+    cost?: {
+        amount: number;
+        currency: string;
+    } | null;
 }
+/**
+ * What `POST /api/quotes/{id}/void` found. `voided`: the quote can no longer
+ * be ordered (it is now voided, or had already expired or been canceled).
+ * `accepted`: an order was made from it, and this is that order.
+ */
+type VoidQuoteResult = {
+    status: 'voided';
+} | {
+    status: 'accepted';
+    delivery_id: string;
+    delivery_no: string;
+    leg_waybill_id: string | null;
+};
 interface ShippingFeeDimensions {
     length_cm: number;
     width_cm: number;
@@ -2092,6 +2124,26 @@ interface LastMileCancellationFeeRequest {
     amount: number;
     /** ISO 4217. Default: the cancelled order's currency. */
     currency?: string;
+}
+interface RecordPrepaidPaymentRequest {
+    /**
+     * The id of the payment in the system that keeps the balance (for the Agent
+     * Workbench, the wallet capture). Recording the same id again returns the
+     * payment already recorded.
+     */
+    external_txn_id: string;
+    /** Must equal the open total of your lines on the delivery, in `currency`. */
+    amount: number;
+    currency: string;
+    note?: string;
+}
+interface PrepaidPayment {
+    payment_id: string;
+    invoice_id: string;
+    amount: number;
+    currency: string;
+    /** True when `external_txn_id` had already been recorded and nothing new was written. */
+    replayed: boolean;
 }
 
 /**
@@ -3221,6 +3273,18 @@ declare class Payments {
      * ```
      */
     methods(params?: PaymentMethodsParams): Promise<PaymentMethodsResponse>;
+    /**
+     * Record that your open lines on a delivery were paid from a balance kept in
+     * another system (`payment_method = 'prepaid_balance'`). The TMS invoices
+     * those lines and settles the invoice with a completed payment.
+     *
+     * Idempotent on `external_txn_id`: a repeat returns the payment already
+     * recorded (`replayed: true`). Fails with 409 `amount_mismatch` when
+     * `amount` is not the open total, and 404 when you have no open line there.
+     *
+     * @param deliveryId - The delivery (for a last-mile order, its `delivery_id`)
+     */
+    recordPrepaidForDelivery(deliveryId: string, data: RecordPrepaidPaymentRequest): Promise<PrepaidPayment>;
 }
 
 /**
@@ -4314,6 +4378,18 @@ declare class Quotes {
     create(data: CreateQuoteRequest, options?: {
         senderAccountId?: string;
     }): Promise<CreateQuoteResponse>;
+    /**
+     * Void a quote of your organization so that it can no longer be ordered,
+     * or learn the order already made from it.
+     *
+     * The check and the void happen under the same claim as ordering, so a slow
+     * order still in flight either commits first (the answer is `accepted`) or
+     * is refused afterwards. While an order holds the quote the call fails with
+     * 409 `in_progress`: try again later.
+     *
+     * @param quotationId - The quote's id
+     */
+    void(quotationId: string): Promise<VoidQuoteResult>;
 }
 
 /**
@@ -4563,4 +4639,4 @@ declare class TMSClient {
     withLanguage(language?: TMSLanguage): TMSClient;
 }
 
-export { type AddPackageRequest, type AddPackageResponse, type AddSenderAccountMarkerRequest, type AdditionalService, Address, type AddressResolveByCoords, type AddressResolveByText, type AddressResolveByUrl, type AddressResolveOptions, type AddressResolveRequest, type AddressType, type AllocateWaybillNumberResponse, type AvailablePaymentMethod, type BankAccountAvailability, BankAccounts, type BankSlip, type BankTransferInstructions, type BatchLabelRequest, type BillingByServiceParams, type BillingByServiceReport, type BillingCycle, type BillingCycleRun, type BillingEmailRequest, type BillingProfile, BillingProfiles, type BillingRecord, type BillingStatus, type BillingType, Billings, type CancelLastMileRequest, type Carrier, CarrierAccounts, type ConsolidateWaybillsRequest, type ConsolidateWaybillsResponse, type CreateAdditionalServicesRequest, type CreateBankSlipRequest, type CreateBillingProfileRequest, type CreateBillingRequest, type CreateDeliveryEventRequest, type CreateInvoiceRequest, type CreateOrganizationUnitRequest, type CreatePaymentRequest, type CreateProductCategoryRequest, type CreateQuoteRequest, type CreateQuoteResponse, type CreateRateCardRequest, type CreateSenderAccountRecipientAddress, type CreateSenderAccountRecipientRequest, type CreateSenderAccountRequest, type CreateShippingFeeRequest, type CreateWaybillRequest, type CreateWaybillResponse, type CycleRunStatus, type DateRangeParams, type DeliveryEvent, type DeliveryEventType, DeliveryEvents, type FlashPayAppResponse, type FlashPayQRResponse, type FlashPayRequest, type FlashPayResponse, type FlashPayType, type GeocodeSource, type GetLabelParams, type ImportSenderAccountRow, type ImportSenderAccountsRequest, type ImportSenderAccountsResponse, type Invoice, type InvoiceLineItem, type InvoiceStatus, Invoices, type IssueInvoiceRequest, type LabelFormat, type LabelSize, type LabelWithInfo, type LastMileCancellation, type LastMileCancellationFeeRequest, type LastMileOrder, type LastMileOrderSummary, type ListAllMarkersParams, type ListBillingProfilesParams, type ListBillingsParams, type ListCycleRunsParams, type ListInvoicesParams, type ListOrganizationUnitsParams, type ListPaymentsParams, type ListProductCategoriesParams, type ListRateCardsParams, type ListRegionsParams, type ListSenderAccountRecipientsParams, type ListSenderAccountsParams, type ListServicesParams, type ListWalletTransactionsParams, type ListWaybillRoutesParams, type OrderLastMileRequest, type Organization, type OrganizationUnit, type OrganizationUnitAddress, type OrganizationUnitType, OrganizationUnits, Organizations, type OutstandingInvoicesParams, type OutstandingInvoicesReport, type PackageLabelOcrParams, type PackageLabelOcrResponse, type PackageLabelOcrResult, type PaginatedResponse, type PaginationParams, type Parcel, type PayInvoiceWithWalletRequest, type PayInvoiceWithWalletResponse, type Payment, type PaymentAllocation, type PaymentHistoryParams, type PaymentHistoryReport, type PaymentMethod, type PaymentMethodUnavailableReason, type PaymentMethodsParams, type PaymentMethodsResponse, type PaymentMode, type PaymentStatus, type PaymentTerms, Payments, type PodUploadToken, type Product, ProductCategories, type ProductCategory, type ProductCategoryTreeNode, type PublicBankAccount, type QuoteAddress, type QuoteBreakdownLine, type QuoteItem, type QuoteServiceType, Quotes, type RateCard, RateCards, type RecipientAddress, type RecipientInput, type RegionCity, type RegionDistrict, type RegionHierarchy, type RegionProvince, Regions, type RemoveSenderAccountMarkerResponse, type ReplaceAllocationsRequest, type ReportDateRangeParams, type ReportPeriod, Reports, type ResolvedAddress, type RevenueSummaryParams, type RevenueSummaryReport, type SendEmailRequest, type SendInvoiceEmailRequest, type SenderAccount, type SenderAccountMarker, type SenderAccountOwnershipRequest, type SenderAccountOwnershipResponse, type SenderAccountRecipient, SenderAccounts, type Service, type ServiceSelector, type ServiceSelectorCondition, Services, ShippingFee, type ShippingFeeBreakdownLine, type ShippingFeeDimensions, type ShippingFeeResponse, type SplitPackageRequest, type SplitPackageResponse, type SplitPart, TMSApiError, TMSClient, type TMSClientConfig, type TMSError, type TMSLanguage, type TopUpWalletRequest, type TrackingRoute, type TriggerCycleRequest, type UpdateAdditionalServiceRequest, type UpdateBillingProfileRequest, type UpdateBillingRequest, type UpdateInvoiceRequest, type UpdateOrganizationRequest, type UpdateOrganizationUnitRequest, type UpdatePackageRequest, type UpdatePackageResponse, type UpdatePaymentRequest, type UpdateProductCategoryRequest, type UpdateRateCardRequest, type UpdateSenderAccountRecipientRequest, type UpdateSenderAccountRequest, type VerifyBankSlipRequest, type WalletBalance, type WalletTopUpAppResponse, type WalletTopUpQRResponse, type WalletTopUpResponse, type WalletTransaction, type WalletTransactionType, type WalletTransactionsResponse, Wallets, type WaybillAddress, type WaybillBillingRecord, type WaybillDelegation, type WaybillDetails, type WaybillEvents, type WaybillListParams, type WaybillPackage, type WaybillPackageSummary, type WaybillRecipient, type WaybillRoute, type WaybillRouteLeg, type WaybillRouteUnit, type WaybillRouteUnitAddress, type WaybillRouteWithLegs, WaybillRoutes, type WaybillServiceCount, type WaybillServiceCountParams, type WaybillSummary, Waybills, canonicalizeJson, generateKeyedSignature, generateNonce, generateSignature, getTimestamp, verifyWebhookSignature };
+export { type AddPackageRequest, type AddPackageResponse, type AddSenderAccountMarkerRequest, type AdditionalService, Address, type AddressResolveByCoords, type AddressResolveByText, type AddressResolveByUrl, type AddressResolveOptions, type AddressResolveRequest, type AddressType, type AllocateWaybillNumberResponse, type AvailablePaymentMethod, type BankAccountAvailability, BankAccounts, type BankSlip, type BankTransferInstructions, type BatchLabelRequest, type BillingByServiceParams, type BillingByServiceReport, type BillingCycle, type BillingCycleRun, type BillingEmailRequest, type BillingProfile, BillingProfiles, type BillingRecord, type BillingStatus, type BillingType, Billings, type CancelLastMileRequest, type Carrier, CarrierAccounts, type ConsolidateWaybillsRequest, type ConsolidateWaybillsResponse, type CreateAdditionalServicesRequest, type CreateBankSlipRequest, type CreateBillingProfileRequest, type CreateBillingRequest, type CreateDeliveryEventRequest, type CreateInvoiceRequest, type CreateOrganizationUnitRequest, type CreatePaymentRequest, type CreateProductCategoryRequest, type CreateQuoteRequest, type CreateQuoteResponse, type CreateRateCardRequest, type CreateSenderAccountRecipientAddress, type CreateSenderAccountRecipientRequest, type CreateSenderAccountRequest, type CreateShippingFeeRequest, type CreateWaybillRequest, type CreateWaybillResponse, type CycleRunStatus, type DateRangeParams, type DeliveryEvent, type DeliveryEventType, DeliveryEvents, type FlashPayAppResponse, type FlashPayQRResponse, type FlashPayRequest, type FlashPayResponse, type FlashPayType, type GeocodeSource, type GetLabelParams, type ImportSenderAccountRow, type ImportSenderAccountsRequest, type ImportSenderAccountsResponse, type Invoice, type InvoiceLineItem, type InvoiceStatus, Invoices, type IssueInvoiceRequest, type LabelFormat, type LabelSize, type LabelWithInfo, type LastMileCancellation, type LastMileCancellationFeeRequest, type LastMileOrder, type LastMileOrderSummary, type ListAllMarkersParams, type ListBillingProfilesParams, type ListBillingsParams, type ListCycleRunsParams, type ListInvoicesParams, type ListOrganizationUnitsParams, type ListPaymentsParams, type ListProductCategoriesParams, type ListRateCardsParams, type ListRegionsParams, type ListSenderAccountRecipientsParams, type ListSenderAccountsParams, type ListServicesParams, type ListWalletTransactionsParams, type ListWaybillRoutesParams, type OrderLastMileRequest, type Organization, type OrganizationUnit, type OrganizationUnitAddress, type OrganizationUnitType, OrganizationUnits, Organizations, type OutstandingInvoicesParams, type OutstandingInvoicesReport, type PackageLabelOcrParams, type PackageLabelOcrResponse, type PackageLabelOcrResult, type PaginatedResponse, type PaginationParams, type Parcel, type PayInvoiceWithWalletRequest, type PayInvoiceWithWalletResponse, type Payment, type PaymentAllocation, type PaymentHistoryParams, type PaymentHistoryReport, type PaymentMethod, type PaymentMethodUnavailableReason, type PaymentMethodsParams, type PaymentMethodsResponse, type PaymentMode, type PaymentStatus, type PaymentTerms, Payments, type PodUploadToken, type PrepaidPayment, type Product, ProductCategories, type ProductCategory, type ProductCategoryTreeNode, type PublicBankAccount, type QuoteAddress, type QuoteBreakdownLine, type QuoteItem, type QuoteServiceType, Quotes, type RateCard, RateCards, type RecipientAddress, type RecipientInput, type RecordPrepaidPaymentRequest, type RegionCity, type RegionDistrict, type RegionHierarchy, type RegionProvince, Regions, type RemoveSenderAccountMarkerResponse, type ReplaceAllocationsRequest, type ReportDateRangeParams, type ReportPeriod, Reports, type ResolvedAddress, type RevenueSummaryParams, type RevenueSummaryReport, type SendEmailRequest, type SendInvoiceEmailRequest, type SenderAccount, type SenderAccountMarker, type SenderAccountOwnershipRequest, type SenderAccountOwnershipResponse, type SenderAccountRecipient, SenderAccounts, type Service, type ServiceSelector, type ServiceSelectorCondition, Services, ShippingFee, type ShippingFeeBreakdownLine, type ShippingFeeDimensions, type ShippingFeeResponse, type SplitPackageRequest, type SplitPackageResponse, type SplitPart, type StoredPaymentMethod, TMSApiError, TMSClient, type TMSClientConfig, type TMSError, type TMSLanguage, type TopUpWalletRequest, type TrackingRoute, type TriggerCycleRequest, type UpdateAdditionalServiceRequest, type UpdateBillingProfileRequest, type UpdateBillingRequest, type UpdateInvoiceRequest, type UpdateOrganizationRequest, type UpdateOrganizationUnitRequest, type UpdatePackageRequest, type UpdatePackageResponse, type UpdatePaymentRequest, type UpdateProductCategoryRequest, type UpdateRateCardRequest, type UpdateSenderAccountRecipientRequest, type UpdateSenderAccountRequest, type VerifyBankSlipRequest, type VoidQuoteResult, type WalletBalance, type WalletTopUpAppResponse, type WalletTopUpQRResponse, type WalletTopUpResponse, type WalletTransaction, type WalletTransactionType, type WalletTransactionsResponse, Wallets, type WaybillAddress, type WaybillBillingRecord, type WaybillDelegation, type WaybillDetails, type WaybillEvents, type WaybillListParams, type WaybillPackage, type WaybillPackageSummary, type WaybillRecipient, type WaybillRoute, type WaybillRouteLeg, type WaybillRouteUnit, type WaybillRouteUnitAddress, type WaybillRouteWithLegs, WaybillRoutes, type WaybillServiceCount, type WaybillServiceCountParams, type WaybillSummary, Waybills, canonicalizeJson, generateKeyedSignature, generateNonce, generateSignature, getTimestamp, verifyWebhookSignature };

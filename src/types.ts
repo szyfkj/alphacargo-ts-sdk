@@ -853,6 +853,8 @@ export type PaymentStatus =
   | 'refunded'
   | 'canceled';
 export type PaymentMethod = 'bank_transfer' | 'flashpay' | 'wallet';
+/** A stored payment's method: `prepaid_balance` is recorded only by `payments.recordPrepaidForDelivery`. */
+export type StoredPaymentMethod = PaymentMethod | 'prepaid_balance';
 
 export interface PaymentAllocation {
   id: string;
@@ -866,7 +868,7 @@ export interface PaymentAllocation {
 export interface Payment {
   id: string;
   amount: number;
-  payment_method: PaymentMethod;
+  payment_method: StoredPaymentMethod;
   payment_date: string;
   reference_no?: string;
   status: PaymentStatus;
@@ -902,7 +904,7 @@ export interface ListPaymentsParams extends PaginationParams {
   sender_account_id?: string;
   invoice_id?: string;
   status?: PaymentStatus;
-  payment_method?: PaymentMethod;
+  payment_method?: StoredPaymentMethod;
   from_date?: string;
   to_date?: string;
 }
@@ -2124,6 +2126,12 @@ export interface CreateQuoteRequest {
   addons?: { key: string }[];
   /** Price only these of your services (and the sellers bound to them). */
   service_ids?: string[];
+  /**
+   * Return `cost` (what your organization pays the winning seller). Ignored
+   * when the call names a sender account. Don't set it when the answer is
+   * shown to a customer.
+   */
+  include_cost?: boolean;
 }
 
 /** One line of a quotation's price breakdown (base fare plus any add-ons). */
@@ -2156,7 +2164,24 @@ export interface CreateQuoteResponse {
   expires_at: string;
   /** Price breakdown: the base fare followed by any add-on lines. */
   breakdown: QuoteBreakdownLine[];
+  /**
+   * What your organization pays the seller whose service won the quote (an
+   * Alpha Cargo last-mile service bound to yours), or null when no seller won.
+   * Present only when the request set `include_cost`, with the organization's
+   * own key; never when the call names a sender account
+   * (`X-Sender-Account-Id`).
+   */
+  cost?: { amount: number; currency: string } | null;
 }
+
+/**
+ * What `POST /api/quotes/{id}/void` found. `voided`: the quote can no longer
+ * be ordered (it is now voided, or had already expired or been canceled).
+ * `accepted`: an order was made from it, and this is that order.
+ */
+export type VoidQuoteResult =
+  | { status: 'voided' }
+  | { status: 'accepted'; delivery_id: string; delivery_no: string; leg_waybill_id: string | null };
 
 // ============================================================================
 // Shipping Fee Types
@@ -2404,3 +2429,30 @@ export interface LastMileCancellationFeeRequest {
   /** ISO 4217. Default: the cancelled order's currency. */
   currency?: string;
 }
+
+// ============================================================================
+// Prepaid payments
+// ============================================================================
+
+export interface RecordPrepaidPaymentRequest {
+  /**
+   * The id of the payment in the system that keeps the balance (for the Agent
+   * Workbench, the wallet capture). Recording the same id again returns the
+   * payment already recorded.
+   */
+  external_txn_id: string;
+  /** Must equal the open total of your lines on the delivery, in `currency`. */
+  amount: number;
+  currency: string;
+  note?: string;
+}
+
+export interface PrepaidPayment {
+  payment_id: string;
+  invoice_id: string;
+  amount: number;
+  currency: string;
+  /** True when `external_txn_id` had already been recorded and nothing new was written. */
+  replayed: boolean;
+}
+
